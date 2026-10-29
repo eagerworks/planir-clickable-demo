@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { TARIFA_ESTADIA_DIA, TARIFA_IMO, TARIFA_TRASLADO, daysBetween } from "@/data/seed"
+import { TARIFA_ESTADIA_DIA, daysBetween, itemImo, itemTraslado } from "@/data/seed"
 import type { Salida } from "@/data/types"
 import { fecha, fechaHora, total, usd } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -28,7 +28,7 @@ export function C26SolicitarRetiro({ id }: { id: string }) {
     return (
       <ClientLayout active="contenedores">
         <PageHeader title={`Solicitar retiro · ${id}`} onBack={() => openIngreso("cliente", id)} backLabel={id} />
-        <Callout tone="info" title="Ya pediste el retiro de todos los contenedores de esta solicitud">
+        <Callout tone="info" title="Ya se solicitó el retiro de todos los contenedores de esta solicitud">
           <Button variant="link" className="h-auto p-0" onClick={() => openSalida("cliente", ingreso.contenedores[0].salidaId!)}>
             Ver el retiro
           </Button>
@@ -40,9 +40,9 @@ export function C26SolicitarRetiro({ id }: { id: string }) {
   const ingresoReal = disponibles[0].ingresoReal!
   const dias = daysBetween(ingresoReal, fechaRetiro)
   const preview = [
-    { concepto: `Traslado terminal → playa (${n} × USD ${TARIFA_TRASLADO})`, monto: n * TARIFA_TRASLADO },
+    itemTraslado(n, ingreso.imo),
     { concepto: `Estadía (${dias} días × ${n} cont. × USD ${TARIFA_ESTADIA_DIA})`, monto: dias * n * TARIFA_ESTADIA_DIA },
-    ...(ingreso.imo ? [{ concepto: `Manipuleo carga IMO (${n} × USD ${TARIFA_IMO})`, monto: n * TARIFA_IMO }] : []),
+    ...(ingreso.imo ? [itemImo(n)] : []),
   ]
   const toggle = (num: string) => setElegidos((e) => (e.includes(num) ? e.filter((x) => x !== num) : [...e, num]))
 
@@ -52,11 +52,11 @@ export function C26SolicitarRetiro({ id }: { id: string }) {
         onBack={() => go("C23")}
         backLabel="Contenedores en playa"
         title="Solicitar retiro"
-        subtitle={`Desde ${ingreso.id} · ${ingreso.barco} ${ingreso.viaje}. Reutilizamos los datos del ingreso: solo elegí qué contenedores y cuándo.`}
+        subtitle={`Desde ${ingreso.id} · ${ingreso.barco} ${ingreso.viaje}. Se reutilizan los datos del ingreso: solo hay que elegir qué contenedores y cuándo.`}
       />
       <div className="grid grid-cols-[minmax(0,1fr)_340px] gap-6">
         <div className="space-y-4">
-          <SectionCard title="¿Qué contenedores retirás?">
+          <SectionCard title="¿Qué contenedores retira?">
             <ul className="space-y-2">
               {disponibles.map((c) => (
                 <li key={c.numero}>
@@ -81,7 +81,7 @@ export function C26SolicitarRetiro({ id }: { id: string }) {
                 </li>
               ))}
             </ul>
-            <p className="mt-3 text-xs text-muted-foreground">Podés retirar algunos ahora y el resto más adelante.</p>
+            <p className="mt-3 text-xs text-muted-foreground">Puede retirar algunos ahora y el resto más adelante.</p>
           </SectionCard>
           <SectionCard title="¿Cuándo?">
             <div className="grid grid-cols-2 gap-4">
@@ -99,11 +99,11 @@ export function C26SolicitarRetiro({ id }: { id: string }) {
           </SectionCard>
           {cliente.condicionPago === "pago_previo" ? (
             <Callout tone="warn" icon={<Banknote className="size-5" />} title="Pago previo al retiro">
-              Antes de retirar tenés que transferir el total de la proforma. Cuando Planir confirma el pago, el retiro queda habilitado.
+              Antes de retirar se debe transferir el total de la proforma. Cuando Planir confirma el pago, el retiro queda habilitado.
             </Callout>
           ) : (
             <Callout tone="ok" icon={<CheckCircle2 className="size-5" />} title="Cuenta corriente">
-              No tenés que pagar antes: el retiro se habilita directamente.
+              No requiere pago previo: el retiro se habilita directamente.
             </Callout>
           )}
           <Button
@@ -113,7 +113,7 @@ export function C26SolicitarRetiro({ id }: { id: string }) {
             disabled={n === 0}
             onClick={() => {
               const salId = solicitar(ingreso.id, elegidos, fechaRetiro)
-              toast.success(`Solicitaste el retiro ${salId}`)
+              toast.success(`Retiro ${salId} solicitado`)
               openSalida("cliente", salId)
             }}
           >
@@ -177,18 +177,18 @@ export function ClienteSalidaDetalle({ id }: { id: string }) {
         <SalidaTracker salida={salida} pagoPrevio={pagoPrevio} />
         {salida.estado === "pendiente_pago" && (
           <Callout tone="warn" icon={<Clock className="size-5" />} title="Pendiente de pago">
-            El retiro se habilita cuando Planir confirme la transferencia. Funciona como un peaje: pagás antes de salir y la factura llega al terminar.
+            El retiro se habilita cuando Planir confirme la transferencia. Funciona como un peaje: se paga antes de salir y la factura llega al terminar.
           </Callout>
         )}
         {salida.estado === "habilitada" && (
           <Callout tone="ok" icon={<CheckCircle2 className="size-5" />} title={`Retiro habilitado para el ${fecha(salida.fechaRetiro)}`}>
-            {salida.pagoConfirmado ? `Confirmamos tu pago el ${fecha(salida.pagoConfirmado)}. ` : ""}Coordiná el camión: el transportista tiene que presentar el número de retiro{" "}
+            {salida.pagoConfirmado ? `Confirmamos su pago el ${fecha(salida.pagoConfirmado)}. ` : ""}Coordine el camión: el transportista debe presentar el número de retiro{" "}
             <b>{salida.id}</b> en portería.
           </Callout>
         )}
         {salida.estado === "retirada" && (
-          <Callout tone="neutral" icon={<CheckCircle2 className="size-5" />} title="Tus contenedores salieron de la playa">
-            Te dejamos la constancia de salida y el detalle de los días de estadía. La factura final llega a tu email.
+          <Callout tone="neutral" icon={<CheckCircle2 className="size-5" />} title="Sus contenedores salieron de la playa">
+            Aquí están la constancia de salida y el detalle de los días de estadía. La factura final llega por email.
           </Callout>
         )}
       </div>
@@ -241,7 +241,7 @@ export function ClienteSalidaDetalle({ id }: { id: string }) {
                 <div className="flex-1 text-sm">
                   <div className="font-medium">Comprobante de transferencia {!salida.comprobante && <span className="font-normal text-muted-foreground">(opcional)</span>}</div>
                   <div className="text-xs text-muted-foreground">
-                    {salida.comprobante ? `${salida.comprobante} · Planir lo va a confirmar` : "Adjuntarlo acelera la confirmación del pago."}
+                    {salida.comprobante ? `${salida.comprobante} · pendiente de confirmación de Planir` : "Adjuntarlo acelera la confirmación del pago."}
                   </div>
                 </div>
                 {!salida.comprobante && (
@@ -250,7 +250,7 @@ export function ClienteSalidaDetalle({ id }: { id: string }) {
                     size="sm"
                     onClick={() => {
                       adjuntar(salida.id)
-                      toast.success("Adjuntaste el comprobante", { description: "Le avisamos a Administración de Planir." })
+                      toast.success("Comprobante adjuntado", { description: "Se notificó a Administración de Planir." })
                     }}
                   >
                     <Upload /> Adjuntar

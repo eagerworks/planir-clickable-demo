@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import { consultaImo } from "@/data/seed"
 import { registerPrepares, STORY_ING, STORY_SAL, useDemo } from "@/store/demo"
 import { C01Invitacion, C02CrearContrasena, C03Login, C04Recuperar } from "./cliente/acceso"
 import { C17Corregir, ClienteIngresoDetalle } from "./cliente/detalle"
@@ -36,15 +37,26 @@ export const GROUPS: { title: string; subtitle?: string }[] = [
   { title: "Nueva solicitud de ingreso", subtitle: "Camino feliz: todo coincide" },
   { title: "Planir revisa y aprueba", subtitle: "Pasos internos, aprobación e ingreso real" },
   { title: "Datos que no coinciden", subtitle: "Correcciones, revisión humana y ayuda" },
+  { title: "Carga peligrosa (IMO)", subtitle: "Detección en el BL y derivación a Depósito 24" },
   { title: "Pendientes, rechazos y cancelación" },
   { title: "Permanencia y salida", subtitle: "Cambio de fecha, retiro, pago y cierre" },
   { title: "Administración", subtitle: "Clientes, proformas y estadías" },
 ]
 
-const [G1, G2, G3, G4, G5, G6, G7, G8] = GROUPS.map((g) => g.title)
+const [G1, G2, G3, G4, G5, GIMO, G6, G7, G8] = GROUPS.map((g) => g.title)
 const ingUrl = (base: string) => (f?: string) => `${base}/solicitudes/${f}`
 
 const story = (stage: number) => () => useDemo.getState().ensureStory(stage)
+
+/** Caso IMO (ING-0138): 1 = Planir consultó, 2 = el cliente confirmó IMO, 3 = derivada a Depósito 24. */
+const IMO_ING = "ING-0138"
+const imoStage = (stage: number) => () => {
+  const s = useDemo.getState()
+  const i = () => useDemo.getState().data.ingresos.find((x) => x.id === IMO_ING)!
+  if (stage >= 1 && i().estado === "revision") s.pedirCorreccion(IMO_ING, consultaImo("«SPRAY PAINT AEROSOL CANS»"))
+  if (stage >= 2 && i().estado === "observada") s.responderImo(IMO_ING, true)
+  if (stage >= 3 && i().estado === "pendiente_aprobacion" && !i().evaluacionD24) s.derivarD24(IMO_ING)
+}
 
 export const SCREENS: ScreenDef[] = [
   // 1 · Acceso
@@ -130,7 +142,7 @@ export const SCREENS: ScreenDef[] = [
     group: G3,
     view: "cliente",
     url: "portal.planir.uy/solicitudes/nueva/operacion",
-    context: "Barco, BL, terminal y fechas. Los datos vienen precargados con el BL de ejemplo de MSC que mandó Planir.",
+    context: "Barco, BL, terminal y fechas, precargados con el BL de ejemplo de MSC que mandó Planir. La terminal define los documentos: Montecon pide BL y Delivery Order; TCP, BL y confirmación de pago.",
     render: () => <C09Operacion />,
   },
   {
@@ -149,7 +161,7 @@ export const SCREENS: ScreenDef[] = [
     group: G3,
     view: "cliente",
     url: "portal.planir.uy/solicitudes/nueva/imo",
-    context: "Si es carga IMO, se agrega la cartilla de seguridad como documento obligatorio (se ve en el panel de la derecha).",
+    context: "Si es IMO, se pide la cartilla de seguridad y se avisa que la carga va a Depósito 24: la playa 1704 no recibe IMO. Si no, se aclara que el portal igual revisa el BL.",
     render: () => <C11Imo />,
   },
   {
@@ -158,7 +170,7 @@ export const SCREENS: ScreenDef[] = [
     group: G3,
     view: "cliente",
     url: "portal.planir.uy/solicitudes/nueva/documentos",
-    context: "BL, un Delivery Order por contenedor y la cartilla IMO si aplica. No deja avanzar si falta un documento obligatorio.",
+    context: "Montecon: BL y un Delivery Order por contenedor. TCP: BL y la confirmación de pago (PDF o texto del mail). Cartilla IMO si aplica. Para ver la diferencia, cambiar la terminal en el paso 1.",
     tag: "A VALIDAR",
     render: () => <C12Documentos />,
   },
@@ -284,7 +296,7 @@ export const SCREENS: ScreenDef[] = [
     group: G5,
     view: "cliente",
     url: (f) => `portal.planir.uy/solicitudes/${f}/corregir`,
-    context: "El cliente corrige el dato (o reemplaza el documento) y se vuelve a validar. Probá “Usar este valor” y reenviar.",
+    context: "El cliente corrige el dato (o reemplaza el documento) y se vuelve a validar. Para probarlo: “Usar este valor” y reenviar.",
     focus: "ING-0139",
     render: (f) => <C17Corregir id={f!} />,
   },
@@ -345,14 +357,83 @@ export const SCREENS: ScreenDef[] = [
     render: () => <P12Ayuda />,
   },
 
-  // 6 · Pendientes, rechazos, cancelación
+  // 6 · Carga IMO
+  {
+    id: "P13",
+    title: "Posible carga IMO no declarada",
+    group: GIMO,
+    view: "operador",
+    url: ingUrl("consola.planir.uy"),
+    context: "El cliente declaró carga general, pero el BL describe aerosoles de pintura. Sin N° UN ni clase es solo una señal de alerta: pasa a revisión humana y la operadora consulta al cliente.",
+    tag: "A VALIDAR",
+    focus: IMO_ING,
+    render: (f) => <PlanirIngresoDetalle id={f!} />,
+  },
+  {
+    id: "C30",
+    title: "Planir consulta si es carga IMO",
+    group: GIMO,
+    view: "cliente",
+    url: ingUrl("portal.planir.uy"),
+    context: "El cliente ve la consulta junto con la descripción del BL. Hasta que responda, la solicitud queda detenida.",
+    focus: IMO_ING,
+    prepare: imoStage(1),
+    render: (f) => <ClienteIngresoDetalle id={f!} />,
+  },
+  {
+    id: "C31",
+    title: "Responder: ¿es carga IMO?",
+    group: GIMO,
+    view: "cliente",
+    url: (f) => `portal.planir.uy/solicitudes/${f}/responder`,
+    context: "Si es IMO, adjunta la cartilla de seguridad. Si no, la solicitud vuelve a Planir con la confirmación del cliente.",
+    focus: IMO_ING,
+    prepare: imoStage(1),
+    render: (f) => <C17Corregir id={f!} />,
+  },
+  {
+    id: "P14",
+    title: "Derivar cartillas a Depósito 24",
+    group: GIMO,
+    view: "operador",
+    url: ingUrl("consola.planir.uy"),
+    context: "La playa 1704 no recibe IMO, sea cual sea la clase. La operadora deriva las cartillas a Depósito 24; sin su aceptación no se puede aprobar.",
+    tag: "A VALIDAR",
+    focus: IMO_ING,
+    prepare: imoStage(2),
+    render: (f) => <PlanirIngresoDetalle id={f!} />,
+  },
+  {
+    id: "C32",
+    title: "En evaluación de Depósito 24",
+    group: GIMO,
+    view: "cliente",
+    url: ingUrl("portal.planir.uy"),
+    context: "El cliente ve que la carga está en evaluación de Depósito 24 y el motivo.",
+    focus: IMO_ING,
+    prepare: imoStage(3),
+    render: (f) => <ClienteIngresoDetalle id={f!} />,
+  },
+  {
+    id: "P15",
+    title: "Respuesta de Depósito 24",
+    group: GIMO,
+    view: "operador",
+    url: ingUrl("consola.planir.uy"),
+    context: "Si Depósito 24 acepta, vuelve a pendiente de aprobación. Si no puede recibirla, se rechaza con el motivo precargado.",
+    focus: IMO_ING,
+    prepare: imoStage(3),
+    render: (f) => <PlanirIngresoDetalle id={f!} />,
+  },
+
+  // 7 · Pendientes, rechazos, cancelación
   {
     id: "P06",
     title: "Dejar pendiente (causa externa)",
     group: G6,
     view: "operador",
     url: ingUrl("consola.planir.uy"),
-    context: "Paro, clima u horario de la terminal: la solicitud queda detenida con un comentario visible para el cliente.",
+    context: "Paro, clima u horario de la terminal: la solicitud queda detenida con un comentario visible para el cliente. En TCP se suma el motivo “Pago no registrado en TCP”.",
     focus: "ING-0133",
     render: (f) => <PlanirIngresoDetalle id={f!} dialog="pendiente" />,
   },
@@ -368,9 +449,19 @@ export const SCREENS: ScreenDef[] = [
       const s = useDemo.getState()
       const i = s.data.ingresos.find((x) => x.id === "ING-0133")
       if (i?.estado === "pendiente_aprobacion")
-        s.dejarPendiente("ING-0133", "Paro en la terminal", "Hay paro en Montecon. Retomamos el movimiento apenas se normalice la actividad; te avisamos por acá.")
+        s.dejarPendiente("ING-0133", "Paro en la terminal", "Hay paro en Montecon. Retomamos el movimiento apenas se normalice la actividad; le avisaremos por este medio.")
     },
     render: (f) => <ClienteIngresoDetalle id={f!} />,
+  },
+  {
+    id: "P16",
+    title: "Pago no registrado en TCP",
+    group: G6,
+    view: "operador",
+    url: ingUrl("consola.planir.uy"),
+    context: "El cliente informó el pago, pero todavía no figura en TCP y la terminal no libera el contenedor. Queda detenida hasta que se acredite; el paso “Pago verificado en TCP” sigue sin tildar.",
+    focus: "ING-0130",
+    render: (f) => <PlanirIngresoDetalle id={f!} />,
   },
   {
     id: "P07",
@@ -396,7 +487,7 @@ export const SCREENS: ScreenDef[] = [
     render: (f) => <ClienteIngresoDetalle id={f!} dialog="cancelar" />,
   },
 
-  // 7 · Permanencia y salida
+  // 8 · Permanencia y salida
   {
     id: "C24",
     title: "Cambiar fecha estimada de salida",
@@ -492,11 +583,11 @@ export const SCREENS: ScreenDef[] = [
     group: G7,
     view: "operador",
     url: "consola.planir.uy/contenedores",
-    context: "Inventario de la playa: días de estadía, salidas próximas, carga IMO y estado de cada retiro.",
+    context: "Inventario: días de estadía, salidas próximas, carga IMO (en Depósito 24) y estado de cada retiro.",
     render: () => <P09Inventario />,
   },
 
-  // 8 · Administración
+  // 9 · Administración
   {
     id: "A01",
     title: "Clientes y condiciones",

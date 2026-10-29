@@ -34,10 +34,10 @@ export function C05Inicio({ notificationsOpen }: { notificationsOpen?: boolean }
     .sort((a, b) => a.salida.localeCompare(b.salida))
   return (
     <ClientLayout active="inicio" notificationsOpen={notificationsOpen}>
-      <PageHeader title={`Hola, ${USUARIO_DEMO.split(" ")[0]}`} subtitle={`Esto es lo que está pasando con tus contenedores hoy, ${fecha(today)}.`} />
+      <PageHeader title={`Hola, ${USUARIO_DEMO.split(" ")[0]}`} subtitle={`Resumen de sus contenedores al ${fecha(today)}.`} />
 
       <div className="grid grid-cols-4 gap-4">
-        <KpiCard label="Requieren tu acción" value={accion.length + pagos.length} tone="error" hint="Datos a corregir o pagos" onClick={() => go("C06")} />
+        <KpiCard label="Requieren su acción" value={accion.length + pagos.length} tone="error" hint="Datos a corregir o pagos" onClick={() => go("C06")} />
         <KpiCard label="Solicitudes en curso" value={enCurso.length} tone="info" hint="En revisión o aprobadas" onClick={() => go("C06")} />
         <KpiCard label="Contenedores en playa" value={contenedores.length} tone="brand" hint="Estadía corriendo" onClick={() => go("C23")} />
         <KpiCard label="Salidas este mes" value={salidas.length} tone="ok" hint="Retiros solicitados" onClick={() => go("C06")} />
@@ -47,12 +47,12 @@ export function C05Inicio({ notificationsOpen }: { notificationsOpen?: boolean }
         <SectionCard
           title={
             <span className="flex items-center gap-2">
-              <TriangleAlert className="size-4 text-brand" /> Requieren tu acción
+              <TriangleAlert className="size-4 text-brand" /> Requieren su acción
             </span>
           }
         >
           {accion.length + pagos.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">No tenés nada pendiente. ¡Todo en orden!</p>
+            <p className="py-6 text-center text-sm text-muted-foreground">No hay nada pendiente.</p>
           ) : (
             <ul className="divide-y">
               {accion.map((i) => (
@@ -62,7 +62,10 @@ export function C05Inicio({ notificationsOpen }: { notificationsOpen?: boolean }
                       {i.id} · Ingreso <EstadoBadge estado={i.estado} />
                     </div>
                     <div className="mt-0.5 text-sm text-muted-foreground">
-                      {i.validacion.filter((c) => c.resultado === "error").length} datos no coinciden con los documentos · {i.barco} {i.viaje}
+                      {i.validacion.some((c) => c.resultado === "error")
+                        ? `${i.validacion.filter((c) => c.resultado === "error").length} datos no coinciden con los documentos`
+                        : "Planir espera su respuesta"}{" "}
+                      · {i.barco} {i.viaje}
                     </div>
                   </div>
                   <Button size="sm" variant="outline" onClick={() => openIngreso("cliente", i.id)}>
@@ -114,7 +117,7 @@ export function C05Inicio({ notificationsOpen }: { notificationsOpen?: boolean }
                 <div className="text-right text-sm font-medium">{fechaCorta(c.salida)}</div>
               </li>
             ))}
-            {proximas.length === 0 && <li className="text-sm text-muted-foreground">No tenés contenedores en la playa.</li>}
+            {proximas.length === 0 && <li className="text-sm text-muted-foreground">No hay contenedores en la playa.</li>}
           </ul>
         </SectionCard>
       </div>
@@ -126,7 +129,7 @@ export function C05Inicio({ notificationsOpen }: { notificationsOpen?: boolean }
           </div>
           <div className="flex-1">
             <div className="font-heading font-semibold text-planir">Nueva solicitud de ingreso</div>
-            <div className="text-sm text-muted-foreground">Traé contenedores de la terminal a la playa</div>
+            <div className="text-sm text-muted-foreground">Traslado de contenedores desde la terminal a la playa</div>
           </div>
           <ArrowRight className="size-5 text-muted-foreground transition group-hover:translate-x-1" />
         </button>
@@ -136,7 +139,7 @@ export function C05Inicio({ notificationsOpen }: { notificationsOpen?: boolean }
           </div>
           <div className="flex-1">
             <div className="font-heading font-semibold text-planir">Solicitar un retiro</div>
-            <div className="text-sm text-muted-foreground">Sacá contenedores que ya están en la playa</div>
+            <div className="text-sm text-muted-foreground">Retiro de contenedores que ya están en la playa</div>
           </div>
           <ArrowRight className="size-5 text-muted-foreground transition group-hover:translate-x-1" />
         </button>
@@ -186,7 +189,7 @@ export function C06MisSolicitudes() {
     <ClientLayout active="solicitudes">
       <PageHeader
         title="Solicitudes"
-        subtitle="Todos los ingresos y salidas de tu empresa, con su estado."
+        subtitle="Todos los ingresos y salidas de su empresa, con su estado."
         actions={
           <Button variant="brand" onClick={() => go("C08")}>
             <Plus /> Nueva solicitud
@@ -262,7 +265,7 @@ export function C23Contenedores() {
   const today = useHoy()
   return (
     <ClientLayout active="contenedores">
-      <PageHeader title="Contenedores en playa" subtitle="Lo que tenés guardado en la playa de Planir y cuándo pensás retirarlo." />
+      <PageHeader title="Contenedores en playa" subtitle="Contenedores guardados en la playa de Planir y su fecha estimada de retiro." />
       <div className="overflow-hidden rounded-xl border bg-white">
         <Table>
           <TableHeader>
@@ -327,7 +330,7 @@ export function C23Contenedores() {
             {contenedores.length === 0 && (
               <TableRow>
                 <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
-                  No tenés contenedores en la playa.
+                  No hay contenedores en la playa.
                 </TableCell>
               </TableRow>
             )}
@@ -335,7 +338,7 @@ export function C23Contenedores() {
         </Table>
       </div>
       <p className="mt-4 text-xs text-muted-foreground">
-        Los días de estadía se cuentan desde el ingreso real a la playa. Si corrés la fecha de salida, se suma un suplemento a la proforma.
+        Los días de estadía se cuentan desde el ingreso real a la playa. Si se posterga la fecha de salida, se suma un suplemento a la proforma.
       </p>
     </ClientLayout>
   )

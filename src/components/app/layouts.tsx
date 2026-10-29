@@ -265,12 +265,12 @@ export function AuthLayout({ children, consola = false }: { children: ReactNode;
         <div className="relative">
           <div className="text-xs font-semibold tracking-[0.2em] text-brand uppercase">{consola ? "Consola interna" : "Portal de clientes"}</div>
           <h2 className="mt-3 text-3xl leading-tight font-bold">
-            {consola ? "Todas las solicitudes de la playa, en un solo lugar." : "Gestioná tus contenedores en la playa de Planir, sin cadenas de mails."}
+            {consola ? "Todas las solicitudes de la playa, en un solo lugar." : "Gestión de contenedores en la playa de Planir"}
           </h2>
           <p className="mt-4 max-w-sm text-sm text-white/70">
             {consola
-              ? "Revisá lo que validó el portal, marcá tus pasos internos y respondé a los clientes desde acá."
-              : "Cargá tus solicitudes de ingreso y salida, subí los documentos y seguí el estado de cada contenedor."}
+              ? "Revisión de lo que validó el portal, pasos internos y respuestas a clientes en una sola consola."
+              : "Solicitudes de ingreso y salida, documentos y estado de cada contenedor en un solo lugar."}
           </p>
         </div>
         <div className="relative text-xs text-white/50">Planir · Puerto de Montevideo</div>

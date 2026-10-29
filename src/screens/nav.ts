@@ -1,8 +1,8 @@
 import { useDemo } from "@/store/demo"
 
 // Pantallas de la sidebar que ya muestran una solicitud puntual; el resto abre el detalle genérico con foco.
-const CLIENTE_INGRESO: Record<string, string> = { "ING-0139": "C16", "ING-0137": "C18", "ING-0133": "C21" }
-const PLANIR_INGRESO: Record<string, string> = { "ING-0137": "P04", "ING-0127": "P05" }
+const CLIENTE_INGRESO: Record<string, string> = { "ING-0139": "C16", "ING-0137": "C18", "ING-0133": "C21", "ING-0138": "C30" }
+const PLANIR_INGRESO: Record<string, string> = { "ING-0137": "P04", "ING-0127": "P05", "ING-0138": "P13", "ING-0130": "P16" }
 
 export function openIngreso(view: "cliente" | "planir", id: string) {
   const go = useDemo.getState().go

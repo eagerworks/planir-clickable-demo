@@ -154,6 +154,7 @@ export function Timeline({ eventos }: { eventos: Evento[] }) {
 const DOC_LABEL: Record<Documento["tipo"], string> = {
   BL: "Bill of Lading (BL)",
   DO: "Delivery Order",
+  PAGO: "Confirmación de pago a TCP",
   IMO: "Cartilla de seguridad IMO",
   COMPROBANTE: "Comprobante de transferencia",
   SALIDA: "Constancia de salida",
@@ -229,7 +230,7 @@ export function KpiCard({ label, value, hint, tone = "neutral", onClick, active 
 export function HelpLine({ className }: { className?: string }) {
   return (
     <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground", className)}>
-      <span>¿Necesitás ayuda de una persona?</span>
+      <span>¿Necesita hablar con una persona?</span>
       <span className="inline-flex items-center gap-1 text-planir">
         <Mail className="size-3.5" /> {MAIL_PLAYA}
       </span>

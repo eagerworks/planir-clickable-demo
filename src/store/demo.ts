@@ -2,14 +2,17 @@ import { create } from "zustand"
 import {
   ADMINISTRACION,
   CLIENTE_DEMO,
+  DEPOSITO_IMO,
   OPERADORA,
   USUARIO_DEMO,
   TARIFA_ESTADIA_DIA,
-  TARIFA_IMO,
-  TARIFA_TRASLADO,
   checksOk,
   daysBetween,
   draftInicial,
+  esTCP,
+  itemImo,
+  itemTraslado,
+  pasosInternos,
   proformaIngreso,
   seedAyuda,
   seedClientes,
@@ -68,20 +71,25 @@ export function storyStage(d: DemoData): number {
   return 1
 }
 
+/** Clase que se asume en la demo cuando el cliente declara o confirma carga IMO. */
+const IMO_DECLARADO = "UN 1950 · Clase 2.1 · Aerosoles"
+
 function enviarDraft(d: DemoData) {
   const f = d.draft
   const contenedores = f.contenedores.map((c) => ({
     ...c,
     salidasEstimadas: [{ fecha: f.fechaSalida, registrado: "", motivo: "Estimada al ingresar" }],
   }))
-  const documentos = [
-    { tipo: "BL" as const, nombre: f.documentos.BL ?? `BL_${f.bl}.pdf`, estado: "validado" as const },
-    ...f.contenedores.map((c, idx) => ({
-      tipo: "DO" as const,
-      nombre: f.documentos[`DO:${c.numero}`] ?? `DO_TCP_${1601455 + idx}.pdf`,
-      estado: "validado" as const,
-      contenedor: c.numero,
-    })),
+  const documentos: Ingreso["documentos"] = [
+    { tipo: "BL", nombre: f.documentos.BL ?? `BL_${f.bl}.pdf`, estado: "validado" },
+    ...(esTCP(f.terminal)
+      ? [{ tipo: "PAGO" as const, nombre: f.documentos.PAGO ?? "Pago_TCP.pdf", estado: "validado" as const }]
+      : f.contenedores.map((c, idx) => ({
+          tipo: "DO" as const,
+          nombre: f.documentos[`DO:${c.numero}`] ?? `DeliveryOrder_Montecon_${1594810 + idx}.pdf`,
+          estado: "validado" as const,
+          contenedor: c.numero,
+        }))),
     ...(f.imo ? [{ tipo: "IMO" as const, nombre: f.documentos.IMO ?? "Cartilla_IMO.pdf", estado: "validado" as const }] : []),
   ]
   const nuevo: Ingreso = {
@@ -95,6 +103,7 @@ function enviarDraft(d: DemoData) {
     fechaLlegada: f.fechaLlegada,
     fechaMovimiento: f.fechaMovimiento,
     imo: f.imo,
+    imoDetalle: f.imo ? IMO_DECLARADO : undefined,
     contenedores,
     documentos,
     validacion: [],
@@ -110,23 +119,22 @@ function enviarDraft(d: DemoData) {
     proforma: proformaIngreso(contenedores.length, f.fechaMovimiento, f.fechaSalida, f.imo),
   }
   nuevo.validacion = checksOk(nuevo)
-  nuevo.pasos = ["Mensaje simplificado en ImporSys", "Orden de trabajo (OT) generada", "OT timbrada por Aduana", "Transporte coordinado"].map(
-    (label) => ({ label, done: false }),
-  )
+  nuevo.pasos = pasosInternos(f.terminal).map((label) => ({ label, done: false }))
   d.ingresos = [nuevo, ...d.ingresos.filter((i) => i.id !== STORY_ING)]
-  notify(d, { para: "cliente", fecha: "2026-10-28T10:43", texto: `Enviaste ${STORY_ING}. Todo coincide: queda en revisión de Planir.`, ref: STORY_ING, tono: "ok" })
+  notify(d, { para: "cliente", fecha: "2026-10-28T10:43", texto: `Solicitud ${STORY_ING} enviada. Todo coincide: queda en revisión de Planir.`, ref: STORY_ING, tono: "ok" })
   notify(d, { para: "planir", fecha: "2026-10-28T10:43", texto: `Nueva solicitud ${STORY_ING} de Importadora Rambla lista para revisar.`, ref: STORY_ING, tono: "info" })
 }
 
 function aprobar(d: DemoData, id: string, comentario?: string) {
   const i = ing(d, id)
   i.pasos = i.pasos.map((p) => ({ ...p, done: true }))
+  if (i.imo) i.evaluacionD24 = "aceptada"
   i.estado = "aprobada"
   i.actualizado = "2026-10-29"
   i.motivoPendiente = undefined
   i.historial.push({ fecha: "2026-10-29T09:15", actor: "planir", texto: `Aprobada por ${OPERADORA}` })
   if (comentario) i.comentarios.push({ fecha: "2026-10-29T09:15", autor: `${OPERADORA} · Planir`, texto: comentario })
-  notify(d, { para: "cliente", fecha: "2026-10-29T09:15", texto: `${id} fue aprobada. Ya podés ver la proforma.`, ref: id, tono: "ok" })
+  notify(d, { para: "cliente", fecha: "2026-10-29T09:15", texto: `${id} fue aprobada. Ya puede ver la proforma.`, ref: id, tono: "ok" })
 }
 
 function ingresar(d: DemoData, id: string, fechaHora = "2026-10-31T08:40") {
@@ -138,7 +146,7 @@ function ingresar(d: DemoData, id: string, fechaHora = "2026-10-31T08:40") {
   notify(d, {
     para: "cliente",
     fecha: fechaHora,
-    texto: `${i.contenedores.length === 1 ? "Tu contenedor" : `Tus ${i.contenedores.length} contenedores`} de ${id} ingresaron a la playa.`,
+    texto: `${i.contenedores.length === 1 ? `El contenedor de ${id} ingresó` : `Los ${i.contenedores.length} contenedores de ${id} ingresaron`} a ${i.imo ? DEPOSITO_IMO : "la playa"}.`,
     ref: id,
     tono: "info",
   })
@@ -179,10 +187,10 @@ function solicitarRetiro(d: DemoData, id: string, contenedores?: string[], fecha
     fechaRetiro: retiro,
     estado: c.condicionPago === "pago_previo" ? "pendiente_pago" : "habilitada",
     proforma: [
-      { concepto: `Traslado terminal → playa (${n} × USD ${TARIFA_TRASLADO})`, monto: n * TARIFA_TRASLADO },
+      itemTraslado(n, i.imo),
       { concepto: `Estadía estimada al ingresar (${base} días × ${n} cont.)`, monto: base * n * TARIFA_ESTADIA_DIA },
       ...(extra > 0 ? [{ concepto: `Suplemento por extensión (${extra} días × ${n} cont.)`, monto: extra * n * TARIFA_ESTADIA_DIA }] : []),
-      ...(i.imo ? [{ concepto: `Manipuleo carga IMO (${n} × USD ${TARIFA_IMO})`, monto: n * TARIFA_IMO }] : []),
+      ...(i.imo ? [itemImo(n)] : []),
     ],
     solicitada: "2026-11-10",
     documentos: [],
@@ -203,7 +211,7 @@ function confirmarPago(d: DemoData, id: string) {
   notify(d, {
     para: "cliente",
     fecha: `${s.pagoConfirmado}T10:00`,
-    texto: `Confirmamos tu pago. El retiro ${id} quedó habilitado para el ${s.fechaRetiro.split("-").reverse().join("/")}.`,
+    texto: `Confirmamos su pago. El retiro ${id} quedó habilitado para el ${s.fechaRetiro.split("-").reverse().join("/")}.`,
     ref: id,
     tono: "ok",
   })
@@ -218,7 +226,7 @@ function registrarSalida(d: DemoData, id: string) {
   s.documentos = [{ tipo: "SALIDA", nombre: `Constancia_salida_${id}.pdf`, estado: "validado" }]
   if (i.contenedores.every((c) => c.salidaReal)) i.estado = "cerrada"
   i.historial.push({ fecha, actor: "planir", texto: `Salida real registrada (${id})` })
-  notify(d, { para: "cliente", fecha, texto: `Tus contenedores salieron de la playa. ${id} quedó cerrada con su constancia.`, ref: id, tono: "ok" })
+  notify(d, { para: "cliente", fecha, texto: `Sus contenedores salieron de la playa. ${id} quedó cerrada con su constancia.`, ref: id, tono: "ok" })
 }
 
 const STORY_STEPS: ((d: DemoData) => void)[] = [
@@ -264,6 +272,10 @@ interface DemoState {
   aceptarRevision: (id: string) => void
   pedirCorreccion: (id: string, mensaje: string) => void
   corregir: (id: string, valores: { fechaLlegada: string; precinto: string }) => boolean
+  reenviar: (id: string) => void
+  responderImo: (id: string, esImo: boolean) => void
+  derivarD24: (id: string) => void
+  aceptaD24: (id: string) => void
   registrarIngreso: (id: string, fechaHora?: string) => void
   cambiarFecha: (id: string, fecha: string) => void
   solicitarRetiro: (id: string, contenedores: string[], fecha: string) => string
@@ -375,6 +387,71 @@ export const useDemo = create<DemoState>((set, get) => {
       })
       return ok
     },
+    reenviar: (id) =>
+      update((d) => {
+        const i = ing(d, id)
+        i.estado = "revision"
+        i.diasSinRespuesta = undefined
+        i.historial.push({ fecha: "2026-10-28T11:05", actor: "cliente", texto: `Documento reemplazado y reenviado por ${USUARIO_DEMO}` })
+        notify(d, { para: "planir", fecha: "2026-10-28T11:05", texto: `Importadora Rambla reenvió ${id}: lista para revisar.`, ref: id, tono: "info" })
+      }),
+    responderImo: (id, esImo) =>
+      update((d) => {
+        const i = ing(d, id)
+        if (esImo) {
+          i.imo = true
+          i.imoDetalle = IMO_DECLARADO
+          i.documentos.push({ tipo: "IMO", nombre: `Cartilla_IMO_${i.contenedores[0].numero}.pdf`, estado: "validado" })
+          i.proforma = proformaIngreso(i.contenedores.length, i.fechaMovimiento, i.contenedores[0].salidasEstimadas.at(-1)!.fecha, true)
+        }
+        i.validacion = i.validacion.map((c) =>
+          c.dato === "Mercadería peligrosa (IMO)"
+            ? esImo
+              ? { ...c, declarado: "Sí", leido: IMO_DECLARADO, documento: "BL · Cartilla IMO", resultado: "ok", nota: "Confirmado por el cliente" }
+              : { ...c, declarado: "No", resultado: "ok", nota: "El cliente confirmó que no es carga IMO" }
+            : c,
+        )
+        i.documentos = i.documentos.map((doc) => (doc.estado === "en_revision" ? { ...doc, estado: "validado" } : doc))
+        i.estado = "pendiente_aprobacion"
+        i.diasSinRespuesta = undefined
+        i.historial.push({
+          fecha: "2026-10-28T11:05",
+          actor: "cliente",
+          texto: esImo ? `${USUARIO_DEMO} confirmó carga IMO y adjuntó la cartilla de seguridad` : `${USUARIO_DEMO} confirmó que no es carga IMO`,
+        })
+        notify(d, {
+          para: "planir",
+          fecha: "2026-10-28T11:05",
+          texto: esImo ? `Importadora Rambla confirmó que ${id} es carga IMO: derivar las cartillas a ${DEPOSITO_IMO}.` : `Importadora Rambla confirmó que ${id} no es carga IMO.`,
+          ref: id,
+          tono: esImo ? "warn" : "info",
+        })
+      }),
+    derivarD24: (id) =>
+      update((d) => {
+        const i = ing(d, id)
+        i.evaluacionD24 = "pendiente"
+        i.estado = "pendiente_externo"
+        i.motivoPendiente = `Evaluación de ${DEPOSITO_IMO}`
+        const texto = `Por tratarse de carga IMO, la playa 1704 no puede recibir el contenedor. Derivamos las cartillas a ${DEPOSITO_IMO} para que evalúe el traslado y el almacenamiento; le avisaremos cuando respondan.`
+        i.comentarios.push({ fecha: "2026-10-28T11:30", autor: `${OPERADORA} · Planir`, texto })
+        i.historial.push({ fecha: "2026-10-28T11:30", actor: "planir", texto: `Cartillas IMO derivadas a ${DEPOSITO_IMO}` })
+        notify(d, { para: "cliente", fecha: "2026-10-28T11:30", texto: `${id} está en evaluación de ${DEPOSITO_IMO} por ser carga IMO.`, ref: id, tono: "warn" })
+      }),
+    aceptaD24: (id) =>
+      update((d) => {
+        const i = ing(d, id)
+        i.evaluacionD24 = "aceptada"
+        i.estado = "pendiente_aprobacion"
+        i.motivoPendiente = undefined
+        i.comentarios.push({
+          fecha: "2026-10-28T15:10",
+          autor: `${OPERADORA} · Planir`,
+          texto: `${DEPOSITO_IMO} confirmó que puede trasladar y almacenar la carga. Seguimos con la aprobación.`,
+        })
+        i.historial.push({ fecha: "2026-10-28T15:10", actor: "planir", texto: `${DEPOSITO_IMO} aceptó el traslado y almacenamiento` })
+        notify(d, { para: "cliente", fecha: "2026-10-28T15:10", texto: `${DEPOSITO_IMO} aceptó la carga IMO de ${id}. La solicitud sigue su curso.`, ref: id, tono: "ok" })
+      }),
     registrarIngreso: (id, fechaHora) =>
       update((d) => {
         if (id === STORY_ING) ensureStoryIn(d, 2)

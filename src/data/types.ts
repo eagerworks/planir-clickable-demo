@@ -34,7 +34,7 @@ export type EstadoIngreso =
 
 export type EstadoSalida = "pendiente_pago" | "habilitada" | "retirada"
 
-export type TipoDocumento = "BL" | "DO" | "IMO" | "COMPROBANTE" | "SALIDA"
+export type TipoDocumento = "BL" | "DO" | "PAGO" | "IMO" | "COMPROBANTE" | "SALIDA"
 
 export interface Documento {
   tipo: TipoDocumento
@@ -102,6 +102,12 @@ export interface Ingreso {
   fechaLlegada: string
   fechaMovimiento: string
   imo: boolean
+  /** N° UN, clase y descripción de la carga peligrosa, según la cartilla o el BL. */
+  imoDetalle?: string
+  /** La playa 1704 no recibe IMO: Depósito 24 evalúa si puede hacer el traslado y almacenamiento. */
+  evaluacionD24?: "pendiente" | "aceptada"
+  /** Descripción de la mercadería tal como figura en el BL. */
+  mercaderia?: string
   contenedores: Contenedor[]
   documentos: Documento[]
   validacion: Check[]

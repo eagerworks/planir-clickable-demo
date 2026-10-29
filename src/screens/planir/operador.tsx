@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { toast } from "sonner"
-import { AlertTriangle, ArrowRight, Building2, CheckCircle2, Clock, FlaskConical, LifeBuoy, Mail, PauseCircle, Phone, Truck, Upload, XCircle } from "lucide-react"
+import { AlertTriangle, ArrowRight, Building2, CheckCircle2, Clock, FlaskConical, LifeBuoy, Mail, PauseCircle, Phone, Send, Truck, Upload, XCircle } from "lucide-react"
 import {
   Callout,
   DocList,
@@ -27,7 +27,7 @@ import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import { daysBetween } from "@/data/seed"
+import { CHECK_IMO, DEPOSITO_IMO, consultaImo, daysBetween, esTCP, terminalCorta } from "@/data/seed"
 import type { Ingreso } from "@/data/types"
 import { fecha, fechaCorta, fechaHora, kg, usd } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -94,7 +94,7 @@ export function P02Bandeja() {
 
   return (
     <PlanirLayout role="operador" active="bandeja">
-      <PageHeader title="Bandeja de solicitudes" subtitle="Lo que entra por el portal. Si la validación automática da todo OK, no te llega ningún mail: lo ves acá." />
+      <PageHeader title="Bandeja de solicitudes" subtitle="Lo que entra por el portal. Si la validación automática da todo OK, no llega ningún mail: la solicitud aparece aquí." />
       <div className="grid grid-cols-5 gap-3">
         <KpiCard label="Para revisar" value={count("revisar")} tone="info" active={grupo === "revisar"} onClick={() => setGrupo("revisar")} />
         <KpiCard label="Esperando al cliente" value={count("cliente")} tone="error" active={grupo === "cliente"} onClick={() => setGrupo("cliente")} />
@@ -197,16 +197,18 @@ export function P02Bandeja() {
 export type PlanirDialog = "pendiente" | "rechazar" | "ingreso" | "correccion"
 
 const MOTIVOS_PENDIENTE: Record<string, string> = {
-  "Paro en la terminal": "Hay paro en la terminal. Retomamos el movimiento apenas se normalice la actividad; te avisamos por acá.",
-  "Condiciones climáticas": "Por viento fuerte está suspendida la operativa en el puerto. Movemos tu contenedor cuando se habilite.",
-  "Horario de la terminal": "La terminal ya no opera hoy después de las 18 h. Lo movemos mañana a primera hora.",
+  "Pago no registrado en TCP": "El pago todavía no figura registrado en TCP, por lo que la terminal no libera el contenedor. Lo retiramos apenas se acredite; le avisaremos por este medio.",
+  "Paro en la terminal": "Hay paro en la terminal. Retomamos el movimiento apenas se normalice la actividad; le avisaremos por este medio.",
+  "Condiciones climáticas": "Por viento fuerte está suspendida la operativa en el puerto. Movemos su contenedor cuando se habilite.",
+  "Horario de la terminal": "La terminal ya no opera hoy después de las 18 h. Movemos el contenedor mañana a primera hora.",
   Otro: "",
 }
 
 function PendienteDialog({ ingreso, open, onOpenChange }: { ingreso: Ingreso; open: boolean; onOpenChange: (o: boolean) => void }) {
   const dejarPendiente = useDemo((s) => s.dejarPendiente)
-  const [motivo, setMotivo] = useState("Paro en la terminal")
-  const [comentario, setComentario] = useState(MOTIVOS_PENDIENTE["Paro en la terminal"].replace("la terminal", ingreso.terminal.split(" · ")[0]))
+  const inicial = esTCP(ingreso.terminal) ? "Pago no registrado en TCP" : "Paro en la terminal"
+  const [motivo, setMotivo] = useState(inicial)
+  const [comentario, setComentario] = useState(MOTIVOS_PENDIENTE[inicial].replace("paro en la terminal", `paro en ${terminalCorta(ingreso.terminal)}`))
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
@@ -228,7 +230,9 @@ function PendienteDialog({ ingreso, open, onOpenChange }: { ingreso: Ingreso; op
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {Object.keys(MOTIVOS_PENDIENTE).map((m) => (
+                {Object.keys(MOTIVOS_PENDIENTE)
+                  .filter((m) => esTCP(ingreso.terminal) || !m.includes("TCP"))
+                  .map((m) => (
                   <SelectItem key={m} value={m}>
                     {m}
                   </SelectItem>
@@ -250,7 +254,7 @@ function PendienteDialog({ ingreso, open, onOpenChange }: { ingreso: Ingreso; op
             onClick={() => {
               dejarPendiente(ingreso.id, motivo, comentario)
               onOpenChange(false)
-              toast(`${ingreso.id} quedó pendiente`, { description: "Le avisamos al cliente con tu comentario." })
+              toast(`${ingreso.id} quedó pendiente`, { description: "Se notificó al cliente con el comentario." })
             }}
           >
             Dejar pendiente
@@ -269,7 +273,7 @@ function RechazarDialog({ ingreso, open, onOpenChange, preset }: { ingreso: Ingr
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Rechazar {ingreso.id}</DialogTitle>
-          <DialogDescription>El cliente recibe el motivo en el portal. Usalo cuando el pedido no se puede hacer; si falta un dato, mejor pedí una corrección.</DialogDescription>
+          <DialogDescription>El cliente recibe el motivo en el portal. Es para pedidos que no se pueden realizar; si falta un dato, conviene pedir una corrección.</DialogDescription>
         </DialogHeader>
         <div className="space-y-1.5">
           <Label>Motivo del rechazo (obligatorio)</Label>
@@ -285,7 +289,7 @@ function RechazarDialog({ ingreso, open, onOpenChange, preset }: { ingreso: Ingr
             onClick={() => {
               rechazar(ingreso.id, motivo)
               onOpenChange(false)
-              toast(`Rechazaste ${ingreso.id}`)
+              toast(`${ingreso.id} rechazada`)
             }}
           >
             Rechazar solicitud
@@ -300,14 +304,18 @@ function CorreccionDialog({ ingreso, open, onOpenChange }: { ingreso: Ingreso; o
   const pedir = useDemo((s) => s.pedirCorreccion)
   const warning = ingreso.validacion.find((c) => c.resultado === "warning")
   const [mensaje, setMensaje] = useState(
-    warning?.dato === "Documento BL" ? "El BL que subiste no se lee bien. ¿Nos mandás una copia escaneada con mejor resolución?" : `Revisá el ${warning?.dato.toLowerCase() ?? "dato"}: el valor declarado parece fuera de rango.`,
+    warning?.dato === "Documento BL"
+      ? "El BL adjunto no se lee bien. ¿Puede enviar una copia escaneada con mejor resolución?"
+      : warning?.dato === CHECK_IMO
+        ? consultaImo(warning.leido)
+        : `Revise el ${warning?.dato.toLowerCase() ?? "dato"}: el valor declarado parece fuera de rango.`,
   )
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Pedir corrección al cliente</DialogTitle>
-          <DialogDescription>La solicitud vuelve a “Observada” y el cliente recibe tu mensaje.</DialogDescription>
+          <DialogTitle>{warning?.dato === CHECK_IMO ? "Consultar al cliente" : "Pedir corrección al cliente"}</DialogTitle>
+          <DialogDescription>La solicitud vuelve a “Observada” y el cliente recibe el mensaje.</DialogDescription>
         </DialogHeader>
         <Textarea rows={4} value={mensaje} onChange={(e) => setMensaje(e.target.value)} />
         <DialogFooter>
@@ -318,7 +326,7 @@ function CorreccionDialog({ ingreso, open, onOpenChange }: { ingreso: Ingreso; o
             onClick={() => {
               pedir(ingreso.id, mensaje)
               onOpenChange(false)
-              toast(`Le pediste una corrección a ${ingreso.id}`)
+              toast(`Mensaje enviado al cliente · ${ingreso.id}`)
             }}
           >
             Enviar al cliente
@@ -363,7 +371,7 @@ function IngresoRealDialog({ ingreso, open, onOpenChange }: { ingreso: Ingreso; 
             onClick={() => {
               registrar(ingreso.id, valor)
               onOpenChange(false)
-              toast.success("Ingreso registrado", { description: "Le avisamos al cliente que su contenedor está en la playa." })
+              toast.success("Ingreso registrado", { description: "Se notificó al cliente que su contenedor ingresó." })
             }}
           >
             Registrar ingreso
@@ -405,6 +413,63 @@ function ClienteCard({ clienteId }: { clienteId: string }) {
   )
 }
 
+function ImoCard({ ingreso, onRechazar }: { ingreso: Ingreso; onRechazar: () => void }) {
+  const derivar = useDemo((s) => s.derivarD24)
+  const acepta = useDemo((s) => s.aceptaD24)
+  const ev = ingreso.evaluacionD24
+  return (
+    <SectionCard
+      title={
+        <span className="flex items-center gap-2">
+          <FlaskConical className="size-4" /> Carga IMO · {DEPOSITO_IMO}
+        </span>
+      }
+      className="border-amber-200"
+    >
+      {ingreso.imoDetalle && <div className="text-sm font-semibold">{ingreso.imoDetalle}</div>}
+      <p className="mt-1 text-xs text-muted-foreground">La playa 1704 no recibe carga IMO. Con las cartillas, {DEPOSITO_IMO} evalúa si puede hacer el traslado y el almacenamiento.</p>
+      {!ev && (
+        <Button
+          className="mt-3 w-full"
+          disabled={ingreso.estado !== "pendiente_aprobacion"}
+          onClick={() => {
+            derivar(ingreso.id)
+            toast(`Cartillas derivadas a ${DEPOSITO_IMO}`, { description: "La solicitud queda pendiente hasta su respuesta." })
+          }}
+        >
+          <Send /> Derivar cartillas a {DEPOSITO_IMO}
+        </Button>
+      )}
+      {ev === "pendiente" && (
+        <>
+          <div className="mt-3 flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <Clock className="size-4" /> Esperando respuesta de {DEPOSITO_IMO}
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <Button
+              size="sm"
+              onClick={() => {
+                acepta(ingreso.id)
+                toast.success(`${DEPOSITO_IMO} aceptó la carga`, { description: `${ingreso.id} vuelve a “Pendiente de aprobación”.` })
+              }}
+            >
+              Acepta
+            </Button>
+            <Button size="sm" variant="outline" className="text-red-700" onClick={onRechazar}>
+              No puede recibirla
+            </Button>
+          </div>
+        </>
+      )}
+      {ev === "aceptada" && (
+        <div className="mt-3 flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          <CheckCircle2 className="size-4" /> {DEPOSITO_IMO} aceptó el traslado y almacenamiento
+        </div>
+      )}
+    </SectionCard>
+  )
+}
+
 export function PlanirIngresoDetalle({ id, dialog, rechazoPreset }: { id: string; dialog?: PlanirDialog; rechazoPreset?: string }) {
   const ingreso = useIngreso(id)
   const today = useHoy()
@@ -416,10 +481,13 @@ export function PlanirIngresoDetalle({ id, dialog, rechazoPreset }: { id: string
   const cliente = useCliente(ingreso?.clienteId ?? "c-rambla")
   const [open, setOpen] = useState<PlanirDialog | null>(dialog ?? null)
   const [comentario, setComentario] = useState("")
+  const [rechazoD24, setRechazoD24] = useState<string | undefined>()
   if (!ingreso) return <PlanirLayout role="operador" active="bandeja">No encontramos la solicitud {id}.</PlanirLayout>
 
   const decidible = ["pendiente_aprobacion", "pendiente_externo"].includes(ingreso.estado)
   const pasosOk = ingreso.pasos.every((p) => p.done)
+  const d24Ok = !ingreso.imo || ingreso.evaluacionD24 === "aceptada"
+  const imoWarning = ingreso.validacion.some((c) => c.dato === CHECK_IMO && c.resultado === "warning")
   const dialogProps = (d: PlanirDialog) => ({ open: open === d, onOpenChange: (o: boolean) => setOpen(o ? d : null), ingreso })
 
   return (
@@ -429,7 +497,7 @@ export function PlanirIngresoDetalle({ id, dialog, rechazoPreset }: { id: string
         backLabel="Bandeja"
         title={`${ingreso.id} · ${cliente.razonSocial}`}
         badge={<EstadoBadge estado={ingreso.estado} />}
-        subtitle={`Ingreso · ${ingreso.barco} ${ingreso.viaje} · BL ${ingreso.bl} · ${ingreso.contenedores.length} contenedores · presentada el ${fecha(ingreso.creado)} por ${ingreso.creadoPor}`}
+        subtitle={`Ingreso · ${ingreso.barco} ${ingreso.viaje} · BL ${ingreso.bl} · ${ingreso.contenedores.length} ${ingreso.contenedores.length === 1 ? "contenedor" : "contenedores"} · presentada el ${fecha(ingreso.creado)} por ${ingreso.creadoPor}`}
       />
 
       <div className="space-y-3">
@@ -444,26 +512,26 @@ export function PlanirIngresoDetalle({ id, dialog, rechazoPreset }: { id: string
               </Button>
             }
           >
-            Al cliente le llegó el aviso con lo que tiene que corregir, pero todavía no reenvió. Si es una carga importante, podés contactarlo directamente: {cliente.usuarios[0].nombre}, {cliente.telefono}.
+            Al cliente le llegó el aviso con lo que tiene que corregir, pero todavía no reenvió. Si es una carga importante, puede contactarlo directamente: {cliente.usuarios[0].nombre}, {cliente.telefono}.
           </Callout>
         )}
         {ingreso.estado === "revision" && (
           <Callout
             tone="warn"
             icon={<AlertTriangle className="size-5" />}
-            title="Requiere revisión humana"
+            title={imoWarning ? "Posible carga IMO no declarada" : "Requiere revisión humana"}
             action={
               <div className="flex gap-2">
                 <Button variant="outline" className="bg-white" onClick={() => setOpen("correccion")}>
-                  Pedir corrección
+                  {imoWarning ? "Consultar al cliente" : "Pedir corrección"}
                 </Button>
                 <Button
                   onClick={() => {
                     aceptarRevision(ingreso.id)
-                    toast.success("Valor aceptado", { description: `${ingreso.id} pasa a “Pendiente de aprobación”.` })
+                    toast.success(imoWarning ? "Confirmado: no es carga IMO" : "Valor aceptado", { description: `${ingreso.id} pasa a “Pendiente de aprobación”.` })
                   }}
                 >
-                  Aceptar y seguir
+                  {imoWarning ? "No es IMO, seguir" : "Aceptar y seguir"}
                 </Button>
               </div>
             }
@@ -472,6 +540,7 @@ export function PlanirIngresoDetalle({ id, dialog, rechazoPreset }: { id: string
               .filter((c) => c.resultado === "warning")
               .map((c) => `${c.dato}: ${c.leido} — ${c.nota}`)
               .join(" · ")}
+            {imoWarning && <div className="mt-1 text-xs">Es una señal de alerta, no una confirmación. Ante la duda, se consulta al cliente antes de continuar.</div>}
           </Callout>
         )}
         {ingreso.estado === "pendiente_externo" && (
@@ -511,19 +580,24 @@ export function PlanirIngresoDetalle({ id, dialog, rechazoPreset }: { id: string
           </SectionCard>
           <SectionCard title="Operación">
               <div className="grid grid-cols-3 gap-4">
-                <Field label="Terminal" value={ingreso.terminal.split(" · ")[0]} />
+                <Field label="Terminal" value={terminalCorta(ingreso.terminal)} />
                 <Field label="Llegada estimada" value={fecha(ingreso.fechaLlegada)} />
                 <Field label="Movimiento" value={fecha(ingreso.fechaMovimiento)} />
                 <Field label="Salida estimada" value={fecha(ingreso.contenedores[0].salidasEstimadas.at(-1)!.fecha)} />
-                <Field label="Carga IMO" value={ingreso.imo ? "Sí" : "No"} />
+                <Field label="Carga IMO" value={ingreso.imo ? `Sí · ${DEPOSITO_IMO}` : "No"} />
                 <Field label="Peso total" value={kg(Math.round(ingreso.contenedores.reduce((a, c) => a + c.peso, 0) * 10) / 10)} />
+                {ingreso.mercaderia && (
+                  <div className="col-span-3">
+                    <Field label="Mercadería (según BL)" value={ingreso.mercaderia} />
+                  </div>
+                )}
               </div>
           </SectionCard>
           <SectionCard title="Documentos">
             <DocList docs={ingreso.documentos} />
           </SectionCard>
           {["ingresada", "cerrada"].includes(ingreso.estado) && (
-            <SectionCard title="Contenedores en playa" className="overflow-hidden">
+            <SectionCard title={ingreso.imo ? `Contenedores en ${DEPOSITO_IMO}` : "Contenedores en playa"} className="overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
@@ -559,6 +633,17 @@ export function PlanirIngresoDetalle({ id, dialog, rechazoPreset }: { id: string
         </div>
 
         <div className="space-y-4">
+          {ingreso.imo && (
+            <ImoCard
+              ingreso={ingreso}
+              onRechazar={() => {
+                setRechazoD24(
+                  `${DEPOSITO_IMO} no puede recibir esta carga IMO (${ingreso.imoDetalle}). La playa 1704 no admite carga IMO, por lo que no podemos realizar el movimiento.`,
+                )
+                setOpen("rechazar")
+              }}
+            />
+          )}
           {ingreso.pasos.length > 0 && (
             <SectionCard title="Pasos internos" action={<span className="text-xs text-muted-foreground">{ingreso.pasos.filter((p) => p.done).length}/{ingreso.pasos.length}</span>}>
               <ul className="space-y-2.5">
@@ -583,15 +668,17 @@ export function PlanirIngresoDetalle({ id, dialog, rechazoPreset }: { id: string
               </div>
               <Button
                 className="mt-3 w-full"
-                disabled={!pasosOk}
+                disabled={!pasosOk || !d24Ok}
                 onClick={() => {
                   aprobar(ingreso.id, comentario || undefined)
-                  toast.success(`Aprobaste ${ingreso.id}`, { description: "El cliente recibió el aviso con la proforma." })
+                  toast.success(`${ingreso.id} aprobada`, { description: "El cliente recibió el aviso con la proforma." })
                 }}
               >
                 <CheckCircle2 /> Aprobar
               </Button>
-              {!pasosOk && <p className="mt-1.5 text-center text-xs text-muted-foreground">Completá los pasos internos para aprobar</p>}
+              {(!pasosOk || !d24Ok) && (
+                <p className="mt-1.5 text-center text-xs text-muted-foreground">{!d24Ok ? `Falta la aceptación de ${DEPOSITO_IMO}` : "Complete los pasos internos para aprobar"}</p>
+              )}
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <Button variant="outline" onClick={() => setOpen("pendiente")} disabled={ingreso.estado === "pendiente_externo"}>
                   <PauseCircle /> Dejar pendiente
@@ -605,7 +692,9 @@ export function PlanirIngresoDetalle({ id, dialog, rechazoPreset }: { id: string
 
           {ingreso.estado === "aprobada" && (
             <SectionCard title="Siguiente paso">
-              <p className="text-sm text-muted-foreground">Cuando el contenedor llegue a la playa, registrá el ingreso real para empezar a contar la estadía.</p>
+              <p className="text-sm text-muted-foreground">
+                Cuando el contenedor llegue {ingreso.imo ? `a ${DEPOSITO_IMO}` : "a la playa"}, registre el ingreso real para empezar a contar la estadía.
+              </p>
               <Button className="mt-3 w-full" onClick={() => setOpen("ingreso")}>
                 <Truck /> Registrar ingreso real
               </Button>
@@ -623,7 +712,7 @@ export function PlanirIngresoDetalle({ id, dialog, rechazoPreset }: { id: string
       </div>
 
       <PendienteDialog {...dialogProps("pendiente")} />
-      <RechazarDialog {...dialogProps("rechazar")} preset={rechazoPreset} />
+      <RechazarDialog key={rechazoD24} {...dialogProps("rechazar")} preset={rechazoD24 ?? rechazoPreset} />
       <CorreccionDialog {...dialogProps("correccion")} />
       <IngresoRealDialog {...dialogProps("ingreso")} />
     </PlanirLayout>
@@ -646,10 +735,10 @@ export function P09Inventario() {
   const proximas = filas.filter((f) => daysBetween(today, f.c.salidasEstimadas.at(-1)!.fecha) <= 7).length
   return (
     <PlanirLayout role="operador" active="contenedores">
-      <PageHeader title="Contenedores en playa" subtitle={`Inventario al ${fecha(today)}. La estadía se cuenta desde el ingreso real.`} />
+      <PageHeader title="Contenedores en playa" subtitle={`Inventario al ${fecha(today)}. La estadía se cuenta desde el ingreso real. La carga IMO se guarda en ${DEPOSITO_IMO}.`} />
       <div className="mb-6 grid grid-cols-4 gap-3">
-        <KpiCard label="En playa" value={filas.length} tone="brand" />
-        <KpiCard label="Carga IMO" value={filas.filter((f) => f.i.imo).length} tone="warn" />
+        <KpiCard label="En playa 1704" value={filas.filter((f) => !f.i.imo).length} tone="brand" />
+        <KpiCard label={`IMO en ${DEPOSITO_IMO}`} value={filas.filter((f) => f.i.imo).length} tone="warn" />
         <KpiCard label="Salen en los próximos 7 días" value={proximas} tone="info" />
         <KpiCard label="Estadía promedio" value={`${promedio} días`} tone="neutral" />
       </div>
@@ -676,7 +765,7 @@ export function P09Inventario() {
                       {c.numero}
                       {i.imo && (
                         <ToneBadge tone="brand">
-                          <FlaskConical className="size-3" /> IMO
+                          <FlaskConical className="size-3" /> IMO · {DEPOSITO_IMO}
                         </ToneBadge>
                       )}
                     </div>
@@ -836,7 +925,7 @@ export function PlanirSalidaDetalle({ id, dialog }: { id: string; dialog?: "sali
             </ul>
             <div className="mt-4 rounded-lg bg-muted/60 p-3 text-sm">
               {salida.estado === "pendiente_pago" && "El retiro se habilita solo cuando Administración marque el pago como recibido."}
-              {salida.estado === "habilitada" && "Retiro habilitado. Cuando el camión salga, registrá la salida real."}
+              {salida.estado === "habilitada" && "Retiro habilitado. Cuando el camión salga, registre la salida real."}
               {salida.estado === "retirada" && "Salida registrada. Los días de estadía ya están disponibles para Administración."}
             </div>
           </SectionCard>

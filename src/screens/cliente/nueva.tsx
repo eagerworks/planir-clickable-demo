@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { CLIENTE_DEMO, PESO_MAXIMO, TERMINALES, TIPOS_CONTENEDOR, USUARIO_DEMO, checksOk } from "@/data/seed"
+import { Textarea } from "@/components/ui/textarea"
+import { CLIENTE_DEMO, DEPOSITO_IMO, PESO_MAXIMO, SENALES_IMO, TERMINALES, TIPOS_CONTENEDOR, USUARIO_DEMO, checksOk, esTCP } from "@/data/seed"
 import { fecha, kg, usd } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { go } from "@/screens/nav"
@@ -23,18 +24,19 @@ export function C08Tipo() {
   const enPlaya = data.ingresos.filter((i) => i.clienteId === CLIENTE_DEMO && i.estado === "ingresada").length
   return (
     <ClientLayout active={null}>
-      <PageHeader title="Nueva solicitud" subtitle="¿Qué querés hacer?" onBack={() => go("C05")} backLabel="Inicio" />
+      <PageHeader title="Nueva solicitud" subtitle="¿Qué tipo de solicitud desea crear?" onBack={() => go("C05")} backLabel="Inicio" />
       <div className="grid max-w-3xl grid-cols-2 gap-5">
         <button onClick={() => go("C09")} className="group flex flex-col rounded-2xl border-2 border-transparent bg-white p-6 text-left shadow-sm ring-1 ring-border transition hover:border-brand">
           <div className="flex size-12 items-center justify-center rounded-xl bg-brand text-white">
             <ClipboardList className="size-6" />
           </div>
           <div className="mt-5 font-heading text-lg font-bold text-planir">Ingreso a la playa</div>
-          <p className="mt-1 text-sm text-muted-foreground">Pedí que traigamos contenedores desde la terminal a la playa de Planir.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Traslado de contenedores desde la terminal (TCP o Montecon) a la playa de Planir.</p>
           <ul className="mt-4 space-y-1 text-xs text-muted-foreground">
             <li>· Datos del barco y del BL</li>
             <li>· Contenedores y precintos</li>
-            <li>· BL, Delivery Order y cartilla IMO si aplica</li>
+            <li>· BL y Delivery Order (Montecon) o confirmación de pago (TCP)</li>
+            <li>· Cartilla de seguridad si es carga IMO</li>
           </ul>
           <span className="mt-5 inline-flex items-center gap-1 text-sm font-semibold text-brand">
             Empezar <ArrowRight className="size-4 transition group-hover:translate-x-1" />
@@ -49,9 +51,9 @@ export function C08Tipo() {
             <PackageOpen className="size-6" />
           </div>
           <div className="mt-5 font-heading text-lg font-bold text-planir">Salida de la playa</div>
-          <p className="mt-1 text-sm text-muted-foreground">Retirá contenedores que ya están guardados en la playa. Se pide desde el ingreso existente.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Retiro de contenedores que ya están en la playa. Se solicita desde el ingreso existente.</p>
           <div className="mt-4 text-xs text-muted-foreground">
-            {enPlaya > 0 ? `Tenés contenedores de ${enPlaya} ${enPlaya === 1 ? "ingreso" : "ingresos"} en la playa.` : "No tenés contenedores en la playa todavía."}
+            {enPlaya > 0 ? `Hay contenedores de ${enPlaya} ${enPlaya === 1 ? "ingreso" : "ingresos"} en la playa.` : "Todavía no hay contenedores en la playa."}
           </div>
           <span className="mt-5 inline-flex items-center gap-1 text-sm font-semibold text-planir">
             Elegir contenedores <ArrowRight className="size-4 transition group-hover:translate-x-1" />
@@ -78,8 +80,10 @@ function useRequiredDocs() {
   const draft = useDemo((s) => s.data.draft)
   return [
     { key: "BL", label: "Bill of Lading (BL)", hint: `BL ${draft.bl || "—"}, original o copia en PDF` },
-    ...draft.contenedores.map((c) => ({ key: `DO:${c.numero}`, label: "Delivery Order", hint: `Contenedor ${c.numero || "—"}` })),
-    ...(draft.imo ? [{ key: "IMO", label: "Cartilla de seguridad IMO", hint: "Dangerous Goods Shipper's Declaration" }] : []),
+    ...(esTCP(draft.terminal)
+      ? [{ key: "PAGO", label: "Confirmación de pago a TCP", hint: "PDF, captura o texto del mail de pago" }]
+      : draft.contenedores.map((c) => ({ key: `DO:${c.numero}`, label: "Delivery Order (Montecon)", hint: `Contenedor ${c.numero || "—"}` }))),
+    ...(draft.imo ? [{ key: "IMO", label: "Cartilla de seguridad IMO", hint: "Dangerous Goods Declaration" }] : []),
   ]
 }
 
@@ -133,7 +137,7 @@ function DocsAside() {
           })}
         </ul>
         <p className="mt-3 text-xs text-muted-foreground">
-          {faltan.length === 0 ? "Tenés todo lo necesario para enviar." : `Faltan ${faltan.length} ${faltan.length === 1 ? "documento" : "documentos"}. Los cargás en el paso 4.`}
+          {faltan.length === 0 ? "Están todos los documentos necesarios." : `Faltan ${faltan.length} ${faltan.length === 1 ? "documento" : "documentos"}. Se cargan en el paso 4.`}
         </p>
       </SectionCard>
       <HelpLine className="px-1" />
@@ -151,7 +155,7 @@ function WizardShell({ step, children, onNext, nextLabel = "Continuar", nextDisa
 }) {
   return (
     <ClientLayout active={null}>
-      <PageHeader title="Nueva solicitud de ingreso" subtitle="Completá los datos de la operación. Los vamos a comparar con los documentos que subas." onBack={() => go("C08")} backLabel="Tipo de solicitud" />
+      <PageHeader title="Nueva solicitud de ingreso" subtitle="Complete los datos de la operación. El portal los compara con los documentos adjuntos." onBack={() => go("C08")} backLabel="Tipo de solicitud" />
       <Stepper current={step} />
       <div className="grid grid-cols-[minmax(0,1fr)_300px] gap-6">
         <div>
@@ -200,7 +204,10 @@ export function C09Operacion() {
           <FormField label="N° de BL" hint="Tal cual figura en el Bill of Lading">
             <Input value={draft.bl} onChange={(e) => setDraft({ bl: e.target.value.toUpperCase() })} />
           </FormField>
-          <FormField label="Terminal de origen">
+          <FormField
+            label="Terminal de origen"
+            hint={esTCP(draft.terminal) ? "TCP: se pide el BL y la confirmación de pago a la terminal." : "Montecon: se pide el BL y el Delivery Order de cada contenedor."}
+          >
             <Select value={draft.terminal} onValueChange={(v) => setDraft({ terminal: v })}>
               <SelectTrigger className="w-full">
                 <SelectValue />
@@ -217,10 +224,10 @@ export function C09Operacion() {
           <FormField label="Fecha estimada de llegada del barco">
             <Input type="date" value={draft.fechaLlegada} onChange={(e) => setDraft({ fechaLlegada: e.target.value })} />
           </FormField>
-          <FormField label="Fecha solicitada del movimiento" hint="Cuándo querés que traigamos el contenedor a la playa">
+          <FormField label="Fecha solicitada del movimiento" hint="Fecha en que se necesita el contenedor en la playa">
             <Input type="date" value={draft.fechaMovimiento} onChange={(e) => setDraft({ fechaMovimiento: e.target.value })} />
           </FormField>
-          <FormField label="Fecha estimada de salida de la playa" hint="Es una estimación: la podés cambiar después." className="col-span-2 max-w-[calc(50%-10px)]">
+          <FormField label="Fecha estimada de salida de la playa" hint="Es una estimación: se puede cambiar después." className="col-span-2 max-w-[calc(50%-10px)]">
             <Input type="date" value={draft.fechaSalida} onChange={(e) => setDraft({ fechaSalida: e.target.value })} />
           </FormField>
         </div>
@@ -284,7 +291,7 @@ export function C10Contenedores() {
                   </Button>
                 </div>
                 {badNumber && <p className="mt-1 text-xs text-red-600">El número debe tener 4 letras y 7 números (formato ISO 6346).</p>}
-                {r.peso > PESO_MAXIMO && <p className="mt-1 text-xs text-amber-700">Peso alto: si el documento lo confirma, una persona de Planir lo va a revisar.</p>}
+                {r.peso > PESO_MAXIMO && <p className="mt-1 text-xs text-amber-700">Peso alto: si el documento lo confirma, una persona de Planir lo revisará.</p>}
               </div>
             )
           })}
@@ -320,11 +327,18 @@ export function C11Imo() {
           {option(false, "No, es carga general", "No requiere documentos adicionales.", <PackageOpen className="size-4" />)}
           {option(true, "Sí, es carga IMO", "Mercadería peligrosa clasificada según el código IMDG.", <FlaskConical className="size-4" />)}
         </div>
-        {imo && (
+        {imo ? (
           <div className="mt-4">
-            <Callout tone="warn" icon={<ShieldAlert className="size-5" />} title="Se agregó un documento obligatorio: cartilla de seguridad">
-              Vas a tener que subir la <b>IMO Dangerous Goods Shipper's Declaration</b>. Vamos a verificar que el contenedor y el precinto coincidan con lo que cargaste.
+            <Callout tone="warn" icon={<ShieldAlert className="size-5" />} title={`La carga IMO no ingresa a la playa: se deriva a ${DEPOSITO_IMO}`}>
+              La playa 1704 no recibe contenedores IMO, sea cual sea su clase. Planir envía las cartillas a {DEPOSITO_IMO}, que evalúa si puede hacer el traslado y el
+              almacenamiento. Debe adjuntar la <b>cartilla de seguridad</b> (Dangerous Goods Declaration) en el paso siguiente.
             </Callout>
+          </div>
+        ) : (
+          <div className="mt-4 rounded-lg bg-muted/60 p-4 text-sm text-muted-foreground">
+            <div className="font-medium text-foreground">El portal también revisa el BL</div>
+            Busca N° UN, clase IMO/IMDG y descripciones de riesgo ({SENALES_IMO.slice(0, 4).join(", ").toLowerCase()}, etc.). Si encuentra alguna señal, una persona de Planir
+            le consultará antes de continuar.
           </div>
         )}
       </SectionCard>
@@ -332,11 +346,15 @@ export function C11Imo() {
   )
 }
 
-function UploadSlot({ docKey, label, hint, sample }: { docKey: string; label: string; hint: string; sample: string }) {
+const TEXTO_PAGO_TCP = `Buenas tardes, confirmamos el pago de los contenedores del BL MEDUYA172632 (HUAN BAO 68 / 260710).
+Transferencia BROU del 28/10, ref. 88412093. Saludos.`
+
+function UploadSlot({ docKey, label, hint, sample, allowText }: { docKey: string; label: string; hint: string; sample: string; allowText?: boolean }) {
   const file = useDemo((s) => s.data.draft.documentos[docKey])
   const setDraft = useDemo((s) => s.setDraft)
   const documentos = useDemo((s) => s.data.draft.documentos)
   const [progress, setProgress] = useState<number | null>(null)
+  const [texto, setTexto] = useState<string | null>(null)
 
   const upload = () => {
     setProgress(10)
@@ -357,33 +375,63 @@ function UploadSlot({ docKey, label, hint, sample }: { docKey: string; label: st
     setDraft({ documentos: next })
   }
 
+  const pegar = () => {
+    setDraft({ documentos: { ...documentos, [docKey]: "Texto del mail de pago" } })
+    setTexto(null)
+  }
+
   return (
-    <div className={cn("flex items-center gap-4 rounded-xl border p-4", file ? "border-emerald-200 bg-emerald-50/50" : "border-dashed border-stone-300 bg-white")}>
-      <div className={cn("flex size-10 items-center justify-center rounded-lg", file ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>
-        {file ? <FileText className="size-5" /> : <Upload className="size-5" />}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="text-sm font-semibold">
-          {label} <span className="font-normal text-muted-foreground">· {hint}</span>
+    <div className={cn("rounded-xl border p-4", file ? "border-emerald-200 bg-emerald-50/50" : "border-dashed border-stone-300 bg-white")}>
+      <div className="flex items-center gap-4">
+        <div className={cn("flex size-10 items-center justify-center rounded-lg", file ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>
+          {file ? <FileText className="size-5" /> : <Upload className="size-5" />}
         </div>
-        {progress !== null ? (
-          <Progress value={progress} className="mt-2 h-1.5" />
-        ) : file ? (
-          <div className="mt-0.5 flex items-center gap-1.5 text-xs text-emerald-700">
-            <CheckCircle2 className="size-3.5" /> {file} · cargado
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold">
+            {label} <span className="font-normal text-muted-foreground">· {hint}</span>
           </div>
+          {progress !== null ? (
+            <Progress value={progress} className="mt-2 h-1.5" />
+          ) : file ? (
+            <div className="mt-0.5 flex items-center gap-1.5 text-xs text-emerald-700">
+              <CheckCircle2 className="size-3.5" /> {file} · cargado
+            </div>
+          ) : (
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              Arrastre el PDF aquí o selecciónelo desde su computadora
+              {allowText && texto === null && (
+                <>
+                  {" · "}
+                  <button className="font-medium text-planir hover:underline" onClick={() => setTexto(TEXTO_PAGO_TCP)}>
+                    o pegue el texto del mail
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+        {file ? (
+          <Button variant="ghost" size="sm" onClick={remove}>
+            Quitar
+          </Button>
         ) : (
-          <div className="mt-0.5 text-xs text-muted-foreground">Arrastrá el PDF acá o elegilo desde tu computadora</div>
+          <Button variant="outline" size="sm" onClick={upload} disabled={progress !== null}>
+            {progress !== null ? <Loader2 className="animate-spin" /> : <Upload />} Subir archivo
+          </Button>
         )}
       </div>
-      {file ? (
-        <Button variant="ghost" size="sm" onClick={remove}>
-          Quitar
-        </Button>
-      ) : (
-        <Button variant="outline" size="sm" onClick={upload} disabled={progress !== null}>
-          {progress !== null ? <Loader2 className="animate-spin" /> : <Upload />} Subir archivo
-        </Button>
+      {texto !== null && !file && (
+        <div className="mt-3 space-y-2 pl-14">
+          <Textarea rows={3} value={texto} onChange={(e) => setTexto(e.target.value)} className="bg-white text-sm" />
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setTexto(null)}>
+              Cancelar
+            </Button>
+            <Button size="sm" onClick={pegar} disabled={!texto.trim()}>
+              Usar este texto
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -394,8 +442,15 @@ export function C12Documentos() {
   const docs = useRequiredDocs()
   const [tried, setTried] = useState(false)
   const faltan = docs.filter((d) => !draft.documentos[d.key])
+  const tcp = esTCP(draft.terminal)
   const sample = (key: string, idx: number) =>
-    key === "BL" ? `BL_${draft.bl}.pdf` : key === "IMO" ? `Cartilla_IMO_${draft.barco.replace(/\s/g, "")}.pdf` : `DeliveryOrder_TCP_${1601455 + idx}.pdf`
+    key === "BL"
+      ? `BL_${draft.bl}.pdf`
+      : key === "IMO"
+        ? `Cartilla_IMO_${draft.barco.replace(/\s/g, "")}.pdf`
+        : key === "PAGO"
+          ? `Pago_TCP_${draft.bl}.pdf`
+          : `DeliveryOrder_Montecon_${1594810 + idx - 1}.pdf`
   return (
     <WizardShell
       step={3}
@@ -404,10 +459,10 @@ export function C12Documentos() {
         if (faltan.length === 0) go("C13")
       }}
     >
-      <SectionCard title="Subí los documentos">
+      <SectionCard title="Documentos">
         <div className="space-y-3">
           {docs.map((d, idx) => (
-            <UploadSlot key={d.key} docKey={d.key} label={d.label} hint={d.hint} sample={sample(d.key, idx)} />
+            <UploadSlot key={d.key} docKey={d.key} label={d.label} hint={d.hint} sample={sample(d.key, idx)} allowText={d.key === "PAGO"} />
           ))}
         </div>
         {tried && faltan.length > 0 && (
@@ -417,7 +472,15 @@ export function C12Documentos() {
             </Callout>
           </div>
         )}
-        <p className="mt-4 text-xs text-muted-foreground">Aceptamos PDF o foto legible. Si el documento no se puede leer, una persona de Planir lo revisa.</p>
+        {tcp && (
+          <div className="mt-4">
+            <Callout tone="info" title="El pago tiene que figurar en TCP">
+              Planir verifica el pago en el sistema de la terminal. Si todavía no está registrado, TCP no libera el contenedor y la solicitud queda pendiente hasta que se
+              acredite.
+            </Callout>
+          </div>
+        )}
+        <p className="mt-4 text-xs text-muted-foreground">Se aceptan PDF o fotos legibles. Si un documento no se puede leer, una persona de Planir lo revisa.</p>
       </SectionCard>
     </WizardShell>
   )
@@ -518,8 +581,8 @@ export function C14Validando() {
       <div className="mx-auto max-w-2xl py-6">
         <div className="text-center">
           <Loader2 className="mx-auto size-10 animate-spin text-brand" />
-          <h1 className="mt-4 text-2xl font-bold text-planir">Estamos validando tus documentos</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Comparamos lo que cargaste con el BL y los Delivery Order. Tarda unos segundos.</p>
+          <h1 className="mt-4 text-2xl font-bold text-planir">Estamos validando sus documentos</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Comparamos los datos cargados con el BL y {esTCP(draft.terminal) ? "la confirmación de pago" : "los Delivery Order"}. Tarda unos segundos.</p>
         </div>
         <SectionCard className="mt-6">
           <Progress value={(n / checks.length) * 100} className="mb-4 h-1.5" />
@@ -546,17 +609,17 @@ export function C15Enviada() {
         <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-emerald-100">
           <CheckCircle2 className="size-9 text-emerald-600" />
         </div>
-        <h1 className="mt-5 text-2xl font-bold text-planir">¡Listo! Enviaste la solicitud {STORY_ING}</h1>
+        <h1 className="mt-5 text-2xl font-bold text-planir">Solicitud {STORY_ING} enviada</h1>
         <p className="mt-2 text-muted-foreground">
-          Validamos tus documentos y <b className="text-foreground">los {solicitud?.validacion.length ?? 0} datos coinciden</b>. Ahora la revisa el equipo de Planir.
+          Validamos sus documentos y <b className="text-foreground">los {solicitud?.validacion.length ?? 0} datos coinciden</b>. Ahora la revisa el equipo de Planir.
         </p>
       </div>
       <SectionCard className="mx-auto max-w-2xl" title="¿Qué sigue?">
         <ol className="space-y-4 text-sm">
           {[
             ["Planir revisa y aprueba", "Hacen sus gestiones internas (ImporSys, orden de trabajo, Aduana y transporte)."],
-            ["Te avisamos", "Vas a ver el estado y los comentarios en el portal. Si algo queda pendiente, te contamos por qué."],
-            ["Traemos tus contenedores", "Cuando ingresen a la playa te avisamos y empieza a correr la estadía."],
+            ["Le avisamos", "Verá el estado y los comentarios en el portal. Si algo queda pendiente, le explicamos el motivo."],
+            ["Traemos sus contenedores", "Cuando ingresen a la playa le avisamos y empieza a correr la estadía."],
           ].map(([t, d], i) => (
             <li key={t} className="flex gap-3">
               <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-planir">{i + 1}</span>

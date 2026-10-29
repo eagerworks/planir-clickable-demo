@@ -66,8 +66,8 @@ export function A01Clientes() {
         }
       />
       <Callout tone="info" title="Cómo funciona">
-        Los clientes con <b>cuenta corriente</b> retiran sin pago previo. Con <b>pago previo</b>, el retiro se habilita cuando confirmás la transferencia. El <b>costo de cancelación</b> se cobra
-        si el cliente cancela después de la aprobación; lo activás solo para quien lo necesite.
+        Los clientes con <b>cuenta corriente</b> retiran sin pago previo. Con <b>pago previo</b>, el retiro se habilita cuando Administración confirma la transferencia. El <b>costo de cancelación</b> se cobra
+        si el cliente cancela después de la aprobación; se activa solo para quien lo necesite.
       </Callout>
       <div className="mt-5 overflow-hidden rounded-xl border bg-white">
         <Table>
@@ -144,7 +144,7 @@ export function A02NuevoCliente() {
   )
   return (
     <PlanirLayout role="admin" active="clientes">
-      <PageHeader title="Nuevo cliente" subtitle="Das de alta la empresa y le mandamos la invitación al portal a su primer usuario." onBack={() => go("A01")} backLabel="Clientes" />
+      <PageHeader title="Nuevo cliente" subtitle="Alta de la empresa e invitación al portal para su primer usuario." onBack={() => go("A01")} backLabel="Clientes" />
       <div className="grid max-w-4xl grid-cols-[minmax(0,1fr)_300px] gap-6">
         <div className="space-y-4">
           <SectionCard title="Empresa">
@@ -199,7 +199,7 @@ export function A02NuevoCliente() {
                   { razonSocial: f.razonSocial, rut: f.rut, telefono: f.telefono, condicionPago: f.condicionPago, costoCancelacion: f.costoCancelacion },
                   { nombre: f.nombre, email: f.email },
                 )
-                toast.success("Cliente creado", { description: `Le mandamos la invitación a ${f.email}.` })
+                toast.success("Cliente creado", { description: `Invitación enviada a ${f.email}.` })
                 go("A01")
               }}
             >
@@ -266,7 +266,7 @@ export function A03DetalleCliente({ id }: { id: string }) {
                     <TableCell>{u.estado === "activo" ? <ToneBadge tone="ok">Activo</ToneBadge> : <ToneBadge tone="warn">Invitación enviada</ToneBadge>}</TableCell>
                     <TableCell className="text-right">
                       {u.estado === "invitado" && (
-                        <Button size="sm" variant="ghost" onClick={() => toast("Reenviamos la invitación", { description: u.email })}>
+                        <Button size="sm" variant="ghost" onClick={() => toast("Invitación reenviada", { description: u.email })}>
                           Reenviar
                         </Button>
                       )}
@@ -325,7 +325,7 @@ export function A03DetalleCliente({ id }: { id: string }) {
             </div>
             {c.cancelacionesPrevias >= 3 && (
               <Callout tone="warn" title={`Canceló ${c.cancelacionesPrevias} veces este año`}>
-                Considerá mantener activo el costo de cancelación.
+                Se recomienda mantener activo el costo de cancelación.
               </Callout>
             )}
           </div>
@@ -381,9 +381,9 @@ export function A04Pagos() {
   const actual = pendientes.find((s) => s.id === confirmando)
   return (
     <PlanirLayout role="admin" active="pagos">
-      <PageHeader title="Pagos a confirmar" subtitle="Retiros de clientes con pago previo. Cuando llega la transferencia, marcala como recibida y el retiro se habilita." />
+      <PageHeader title="Pagos a confirmar" subtitle="Retiros de clientes con pago previo. Cuando llega la transferencia, se marca como recibida y el retiro se habilita." />
       <Callout tone="info" title="Sin integración con medios de pago">
-        El cliente transfiere por fuera del portal. Acá solo registrás que el pago llegó; si adjuntó el comprobante, lo ves al lado.
+        El cliente transfiere por fuera del portal. Aquí solo se registra que el pago llegó; si adjuntó el comprobante, aparece al lado.
       </Callout>
       <div className="mt-5 space-y-3">
         {pendientes.map((s) => {

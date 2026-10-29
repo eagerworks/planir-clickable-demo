@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { toast } from "sonner"
-import { ArrowRight, CalendarClock, Check, CheckCircle2, Clock, Container, FileText, LifeBuoy, MessageSquare, PauseCircle, Upload, XCircle } from "lucide-react"
+import { ArrowRight, CalendarClock, Check, CheckCircle2, Clock, Container, FileText, FlaskConical, LifeBuoy, MessageSquare, PackageOpen, PauseCircle, ShieldAlert, Upload, XCircle } from "lucide-react"
 import {
   Callout,
   DocList,
@@ -23,7 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import { daysBetween } from "@/data/seed"
+import { CHECK_IMO, DEPOSITO_IMO, daysBetween } from "@/data/seed"
 import type { Ingreso } from "@/data/types"
 import { fecha, fechaCorta, fechaHora, kg, usd } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -72,7 +72,9 @@ export function Tracker({ ingreso }: { ingreso: Ingreso }) {
 function EstadoCallout({ ingreso }: { ingreso: Ingreso }) {
   const cliente = useCliente(ingreso.clienteId)
   const errores = ingreso.validacion.filter((c) => c.resultado === "error")
+  const consultaImo = ingreso.validacion.some((c) => c.dato === CHECK_IMO && c.resultado !== "ok")
   const ultimoComentario = ingreso.comentarios.at(-1)
+  const destino = ingreso.imo ? DEPOSITO_IMO : "la playa"
   switch (ingreso.estado) {
     case "observada":
       return (
@@ -81,12 +83,20 @@ function EstadoCallout({ ingreso }: { ingreso: Ingreso }) {
             <XCircle className="mt-0.5 size-5 text-red-600" />
             <div className="flex-1">
               <div className="font-semibold text-red-800">
-                {errores.length === 1 ? "Un dato no coincide" : `${errores.length} datos no coinciden`} con tus documentos
+                {consultaImo
+                  ? "Planir necesita confirmar si la carga es IMO"
+                  : errores.length === 0
+                    ? "Planir necesita que revise su solicitud"
+                    : `${errores.length === 1 ? "Un dato no coincide" : `${errores.length} datos no coinciden`} con sus documentos`}
               </div>
-              <div className="text-sm text-red-700/90">Revisá el documento o corregí el dato y volvé a enviar. Hasta que lo corrijas, la solicitud queda frenada.</div>
+              <div className="text-sm text-red-700/90">
+                {consultaImo
+                  ? "El BL tiene una descripción que puede corresponder a mercadería peligrosa. Hasta que responda, la solicitud queda detenida."
+                  : "Revise el documento o corrija el dato y vuelva a enviar la solicitud. Hasta entonces, la solicitud queda detenida."}
+              </div>
             </div>
-            <Button variant="brand" onClick={() => go("C17", ingreso.id)}>
-              Corregir y reenviar <ArrowRight />
+            <Button variant="brand" onClick={() => go(consultaImo ? "C31" : "C17", ingreso.id)}>
+              {consultaImo ? "Responder" : "Corregir y reenviar"} <ArrowRight />
             </Button>
           </div>
           {ultimoComentario && (
@@ -102,38 +112,39 @@ function EstadoCallout({ ingreso }: { ingreso: Ingreso }) {
       )
     case "revision":
       return (
-        <Callout tone="warn" icon={<Clock className="size-5" />} title="Una persona de Planir está revisando tu solicitud">
+        <Callout tone="warn" icon={<Clock className="size-5" />} title="Una persona de Planir está revisando su solicitud">
           {ingreso.validacion
             .filter((c) => c.resultado === "warning")
             .map((c) => `${c.dato}: ${c.leido}${c.nota ? ` (${c.nota.toLowerCase()})` : ""}`)
             .join(" · ")}
-          . No tenés que hacer nada por ahora; si necesitamos algo te avisamos.
+          . No necesita hacer nada por ahora; si hace falta algo, le avisaremos.
         </Callout>
       )
     case "pendiente_aprobacion":
       return (
         <Callout tone="info" icon={<Clock className="size-5" />} title="En revisión de Planir">
-          Validamos tus documentos y todo coincide. Planir está haciendo sus gestiones internas para aprobar el movimiento.
+          Validamos sus documentos y todo coincide. Planir está haciendo sus gestiones internas para aprobar el movimiento.
+          {ingreso.imo && !ingreso.evaluacionD24 && ` Por ser carga IMO, Planir enviará las cartillas a ${DEPOSITO_IMO} para que evalúe el traslado y el almacenamiento.`}
         </Callout>
       )
     case "pendiente_externo":
       return (
         <Callout tone="warn" icon={<PauseCircle className="size-5" />} title={`Pendiente por causa externa · ${ingreso.motivoPendiente}`}>
-          {ultimoComentario ? `“${ultimoComentario.texto}” — ${ultimoComentario.autor}` : "Planir te va a avisar cuando se pueda retomar."}
-          <div className="mt-1 text-xs">No es un problema de tu solicitud: en cuanto se normalice, sigue su curso.</div>
+          {ultimoComentario ? `“${ultimoComentario.texto}” — ${ultimoComentario.autor}` : "Planir le avisará cuando se pueda retomar."}
+          <div className="mt-1 text-xs">No es un problema de su solicitud: en cuanto se resuelva, sigue su curso.</div>
         </Callout>
       )
     case "aprobada":
       return (
-        <Callout tone="ok" icon={<CheckCircle2 className="size-5" />} title={`Aprobada · traemos tus contenedores el ${fecha(ingreso.fechaMovimiento)}`}>
-          Te avisamos cuando ingresen a la playa.{" "}
+        <Callout tone="ok" icon={<CheckCircle2 className="size-5" />} title={`Aprobada · traemos sus contenedores el ${fecha(ingreso.fechaMovimiento)}`}>
+          Le avisaremos cuando ingresen a {destino}.{" "}
           {cliente.costoCancelacion && `Desde ahora, cancelar tiene un costo administrativo de ${usd(cliente.montoCancelacion)}.`}
         </Callout>
       )
     case "ingresada":
       return (
-        <Callout tone="brand" icon={<Container className="size-5" />} title={`Tus contenedores están en la playa desde el ${fecha(ingreso.contenedores[0].ingresoReal)}`}>
-          La estadía se calcula desde el ingreso real. Podés cambiar la fecha estimada de salida o pedir el retiro cuando quieras.
+        <Callout tone="brand" icon={<Container className="size-5" />} title={`Sus contenedores están en ${destino} desde el ${fecha(ingreso.contenedores[0].ingresoReal)}`}>
+          La estadía se calcula desde el ingreso real. Puede cambiar la fecha estimada de salida o solicitar el retiro en cualquier momento.
         </Callout>
       )
     case "cerrada":
@@ -149,7 +160,7 @@ function EstadoCallout({ ingreso }: { ingreso: Ingreso }) {
         </Callout>
       )
     case "cancelada":
-      return <Callout tone="neutral" title="Cancelaste esta solicitud" />
+      return <Callout tone="neutral" title="Solicitud cancelada" />
     default:
       return null
   }
@@ -164,7 +175,7 @@ function AyudaDialog({ open, onOpenChange, ingreso, preset }: { open: boolean; o
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Pedir ayuda a Planir</DialogTitle>
-          <DialogDescription>Tu mensaje queda en la solicitud {ingreso.id} y le llega a la persona encargada de la playa.</DialogDescription>
+          <DialogDescription>El mensaje queda registrado en la solicitud {ingreso.id} y le llega a la persona encargada de la playa.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">
@@ -184,7 +195,7 @@ function AyudaDialog({ open, onOpenChange, ingreso, preset }: { open: boolean; o
           </div>
           <div className="space-y-1.5">
             <Label>Mensaje</Label>
-            <Textarea rows={4} value={mensaje} onChange={(e) => setMensaje(e.target.value)} placeholder="Contanos qué necesitás…" />
+            <Textarea rows={4} value={mensaje} onChange={(e) => setMensaje(e.target.value)} placeholder="Describa lo que necesita…" />
           </div>
           <HelpLine />
         </div>
@@ -197,7 +208,7 @@ function AyudaDialog({ open, onOpenChange, ingreso, preset }: { open: boolean; o
             onClick={() => {
               pedirAyuda(ingreso.id, motivo, mensaje)
               onOpenChange(false)
-              toast.success("Le avisamos a Planir", { description: "Te van a responder en la solicitud o por teléfono." })
+              toast.success("Pedido enviado a Planir", { description: "Le responderán en la solicitud o por teléfono." })
             }}
           >
             Enviar pedido
@@ -223,7 +234,7 @@ function CancelarDialog({ open, onOpenChange, ingreso }: { open: boolean; onOpen
         </DialogHeader>
         {conCosto ? (
           <Callout tone="warn" title={`Esta cancelación tiene un costo administrativo de ${usd(cliente.montoCancelacion)}`}>
-            Planir ya aprobó el movimiento y emitió la orden de trabajo. El costo se suma a tu próxima factura.
+            Planir ya aprobó el movimiento y emitió la orden de trabajo. El costo se suma a su próxima factura.
           </Callout>
         ) : (
           <Callout tone="ok" title="Cancelar no tiene costo">
@@ -239,7 +250,7 @@ function CancelarDialog({ open, onOpenChange, ingreso }: { open: boolean; onOpen
             onClick={() => {
               cancelar(ingreso.id, conCosto)
               onOpenChange(false)
-              toast(`Cancelaste ${ingreso.id}`, { description: conCosto ? `Se registró el costo administrativo de ${usd(cliente.montoCancelacion)}.` : "Sin costo." })
+              toast(`${ingreso.id} cancelada`, { description: conCosto ? `Se registró el costo administrativo de ${usd(cliente.montoCancelacion)}.` : "Sin costo." })
             }}
           >
             {conCosto ? `Cancelar y aceptar ${usd(cliente.montoCancelacion)}` : "Sí, cancelar"}
@@ -375,7 +386,12 @@ export function ClienteIngresoDetalle({ id, dialog, ayudaPreset }: { id: string;
                 <Field label="Terminal de origen" value={ingreso.terminal} />
                 <Field label="Llegada estimada" value={fecha(ingreso.fechaLlegada)} />
                 <Field label="Movimiento solicitado" value={fecha(ingreso.fechaMovimiento)} />
-                <Field label="Carga IMO" value={ingreso.imo ? "Sí · cartilla de seguridad" : "No"} />
+                <Field label="Carga IMO" value={ingreso.imo ? `Sí · se deriva a ${DEPOSITO_IMO}` : "No"} />
+                {ingreso.mercaderia && (
+                  <div className="col-span-3">
+                    <Field label="Mercadería (según BL)" value={ingreso.mercaderia} />
+                  </div>
+                )}
               </div>
             </SectionCard>
             <SectionCard title={`Contenedores (${ingreso.contenedores.length})`} className="overflow-hidden">
@@ -443,7 +459,7 @@ export function ClienteIngresoDetalle({ id, dialog, ayudaPreset }: { id: string;
             }
           >
             {ingreso.comentarios.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Todavía no hay comentarios. Si Planir necesita contarte algo, lo vas a ver acá.</p>
+              <p className="text-sm text-muted-foreground">Todavía no hay comentarios. Si Planir necesita informarle algo, aparecerá aquí.</p>
             ) : (
               <ul className="space-y-3">
                 {ingreso.comentarios.map((c, i) => (
@@ -473,8 +489,8 @@ export function ClienteIngresoDetalle({ id, dialog, ayudaPreset }: { id: string;
             <div className="flex items-start gap-3">
               <LifeBuoy className="mt-0.5 size-5 text-brand" />
               <div className="flex-1">
-                <div className="text-sm font-semibold">¿Necesitás una mano?</div>
-                <p className="text-xs text-muted-foreground">Escribile a la persona encargada de la playa sin salir del portal.</p>
+                <div className="text-sm font-semibold">¿Necesita ayuda?</div>
+                <p className="text-xs text-muted-foreground">Escriba a la persona encargada de la playa sin salir del portal.</p>
                 <Button size="sm" variant="outline" className="mt-3" onClick={() => setOpen("ayuda")}>
                   Pedir ayuda a Planir
                 </Button>
@@ -492,11 +508,43 @@ export function ClienteIngresoDetalle({ id, dialog, ayudaPreset }: { id: string;
 }
 
 // ---------------------------------------------------------------------------
-// C17 · Corregir y reenviar
+// C17 · Corregir y reenviar — C31 · Responder consulta IMO
 // ---------------------------------------------------------------------------
 
 export function C17Corregir({ id }: { id: string }) {
   const ingreso = useIngreso(id)!
+  if (ingreso.estado !== "observada")
+    return (
+      <ClientLayout active="solicitudes">
+        <PageHeader title={`Corregir ${id}`} onBack={() => go("C20", id)} backLabel={id} />
+        <Callout tone="ok" icon={<CheckCircle2 className="size-5" />} title="Esta solicitud ya no tiene datos pendientes">
+          La respuesta ya se envió y la solicitud volvió a revisión de Planir.
+        </Callout>
+      </ClientLayout>
+    )
+  if (ingreso.validacion.some((c) => c.dato === CHECK_IMO && c.resultado !== "ok")) return <ConfirmarImo ingreso={ingreso} />
+  if (ingreso.validacion.some((c) => c.dato === "Fecha estimada de llegada" || c.dato.startsWith("Precinto")) && ingreso.validacion.some((c) => c.resultado === "error"))
+    return <CorregirDatos ingreso={ingreso} />
+  return <ReemplazarDocumento ingreso={ingreso} />
+}
+
+function ComoFunciona() {
+  return (
+    <div className="space-y-3">
+      <SectionCard title="Así funciona">
+        <ol className="space-y-2 text-sm text-muted-foreground">
+          <li>1. Se corrige el dato o se sube el documento nuevo.</li>
+          <li>2. El portal vuelve a comparar todo automáticamente.</li>
+          <li>3. Si coincide, la solicitud pasa a revisión de Planir.</li>
+        </ol>
+      </SectionCard>
+      <HelpLine className="px-1" />
+    </div>
+  )
+}
+
+function CorregirDatos({ ingreso }: { ingreso: Ingreso }) {
+  const id = ingreso.id
   const corregir = useDemo((s) => s.corregir)
   const checkFecha = ingreso.validacion.find((c) => c.dato === "Fecha estimada de llegada")!
   const checkPrecinto = ingreso.validacion.find((c) => c.dato.startsWith("Precinto"))!
@@ -504,16 +552,6 @@ export function C17Corregir({ id }: { id: string }) {
   const [precinto, setPrecinto] = useState(ingreso.contenedores[0].precinto)
   const [reemplazado, setReemplazado] = useState(false)
   const toIso = (dmy: string) => dmy.split("/").reverse().join("-")
-
-  if (ingreso.estado !== "observada")
-    return (
-      <ClientLayout active="solicitudes">
-        <PageHeader title={`Corregir ${id}`} onBack={() => go("C20", id)} backLabel={id} />
-        <Callout tone="ok" icon={<CheckCircle2 className="size-5" />} title="Esta solicitud ya no tiene datos para corregir">
-          Ya la corregiste y volvió a revisión de Planir.
-        </Callout>
-      </ClientLayout>
-    )
 
   const filas = [
     {
@@ -537,7 +575,7 @@ export function C17Corregir({ id }: { id: string }) {
         backLabel={id}
         title={`Corregir ${id}`}
         badge={<EstadoBadge estado={ingreso.estado} />}
-        subtitle="Corregí el dato o, si el error está en el documento, subí una versión nueva. Después lo volvemos a validar."
+        subtitle="Corrija el dato o, si el error está en el documento, suba una versión nueva. Después se vuelve a validar."
       />
       <div className="grid grid-cols-[minmax(0,1fr)_300px] gap-6">
         <div className="space-y-4">
@@ -557,7 +595,7 @@ export function C17Corregir({ id }: { id: string }) {
               </div>
               <div className="mt-3 grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label>Lo que cargaste</Label>
+                  <Label>Dato cargado</Label>
                   {f.input}
                 </div>
                 <div className="space-y-1.5">
@@ -581,7 +619,7 @@ export function C17Corregir({ id }: { id: string }) {
               </div>
               <div className="flex-1 text-sm">
                 <div className="font-medium">{reemplazado ? "BL_MEDUYA175110_v2.pdf" : ingreso.documentos[0].nombre}</div>
-                <div className="text-xs text-muted-foreground">{reemplazado ? "Versión nueva cargada" : "Si tu dato es el correcto, subí el BL corregido por la naviera."}</div>
+                <div className="text-xs text-muted-foreground">{reemplazado ? "Versión nueva cargada" : "Si el dato cargado es el correcto, suba el BL corregido por la naviera."}</div>
               </div>
               <Button variant="outline" size="sm" onClick={() => setReemplazado(true)} disabled={reemplazado}>
                 <Upload /> Reemplazar BL
@@ -598,10 +636,10 @@ export function C17Corregir({ id }: { id: string }) {
               onClick={() => {
                 const ok = corregir(id, { fechaLlegada, precinto })
                 if (ok) {
-                  toast.success("¡Todo coincide!", { description: `${id} volvió a revisión de Planir.` })
+                  toast.success("Todo coincide", { description: `${id} volvió a revisión de Planir.` })
                   go("C20", id)
                 } else {
-                  toast.error("Todavía hay datos que no coinciden", { description: "Revisá los campos marcados en rojo." })
+                  toast.error("Todavía hay datos que no coinciden", { description: "Revise los campos marcados en rojo." })
                 }
               }}
             >
@@ -609,13 +647,160 @@ export function C17Corregir({ id }: { id: string }) {
             </Button>
           </div>
         </div>
+        <ComoFunciona />
+      </div>
+    </ClientLayout>
+  )
+}
+
+function ReemplazarDocumento({ ingreso }: { ingreso: Ingreso }) {
+  const reenviar = useDemo((s) => s.reenviar)
+  const [reemplazado, setReemplazado] = useState(false)
+  const comentario = ingreso.comentarios.at(-1)
+  const doc = ingreso.documentos[0]
+  return (
+    <ClientLayout active="solicitudes">
+      <PageHeader onBack={() => go("C20", ingreso.id)} backLabel={ingreso.id} title={`Corregir ${ingreso.id}`} badge={<EstadoBadge estado={ingreso.estado} />} />
+      <div className="grid grid-cols-[minmax(0,1fr)_300px] gap-6">
+        <div className="space-y-4">
+          {comentario && (
+            <Callout tone="warn" icon={<MessageSquare className="size-5" />} title={comentario.autor}>
+              {comentario.texto}
+            </Callout>
+          )}
+          <SectionCard title="Documento">
+            <div className="flex items-center gap-4">
+              <div className="flex size-10 items-center justify-center rounded-lg bg-muted">
+                <FileText className="size-5 text-muted-foreground" />
+              </div>
+              <div className="flex-1 text-sm">
+                <div className="font-medium">{reemplazado ? doc.nombre.replace(".pdf", "_v2.pdf") : doc.nombre}</div>
+                <div className="text-xs text-muted-foreground">{reemplazado ? "Versión nueva cargada" : "Suba una versión corregida o más legible."}</div>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setReemplazado(true)} disabled={reemplazado}>
+                <Upload /> Reemplazar
+              </Button>
+            </div>
+          </SectionCard>
+          <div className="flex justify-end">
+            <Button
+              variant="brand"
+              size="lg"
+              disabled={!reemplazado}
+              onClick={() => {
+                reenviar(ingreso.id)
+                toast.success("Solicitud reenviada", { description: "Una persona de Planir la revisará." })
+                go("C20", ingreso.id)
+              }}
+            >
+              Reenviar solicitud
+            </Button>
+          </div>
+        </div>
+        <ComoFunciona />
+      </div>
+    </ClientLayout>
+  )
+}
+
+function ConfirmarImo({ ingreso }: { ingreso: Ingreso }) {
+  const responder = useDemo((s) => s.responderImo)
+  const [esImo, setEsImo] = useState<boolean | null>(null)
+  const [cartilla, setCartilla] = useState(false)
+  const check = ingreso.validacion.find((c) => c.dato === CHECK_IMO)!
+  const comentario = ingreso.comentarios.at(-1)
+  const opcion = (value: boolean, title: string, desc: string, icon: React.ReactNode) => (
+    <button
+      onClick={() => setEsImo(value)}
+      className={cn(
+        "flex items-start gap-4 rounded-xl border-2 bg-white p-5 text-left transition",
+        esImo === value ? (value ? "border-amber-500 bg-amber-50/50" : "border-planir bg-accent/40") : "border-border hover:border-stone-300",
+      )}
+    >
+      <span className={cn("mt-0.5 flex size-5 items-center justify-center rounded-full border-2", esImo === value ? (value ? "border-amber-500" : "border-planir") : "border-stone-300")}>
+        {esImo === value && <span className={cn("size-2.5 rounded-full", value ? "bg-amber-500" : "bg-planir")} />}
+      </span>
+      <span className="flex-1">
+        <span className="flex items-center gap-2 font-heading font-semibold text-planir">
+          {icon} {title}
+        </span>
+        <span className="mt-1 block text-sm text-muted-foreground">{desc}</span>
+      </span>
+    </button>
+  )
+  return (
+    <ClientLayout active="solicitudes">
+      <PageHeader
+        onBack={() => go("C30", ingreso.id)}
+        backLabel={ingreso.id}
+        title={`Responder a Planir · ${ingreso.id}`}
+        badge={<EstadoBadge estado={ingreso.estado} />}
+        subtitle="Planir necesita confirmar si la mercadería es carga peligrosa (IMO) antes de continuar."
+      />
+      <div className="grid grid-cols-[minmax(0,1fr)_300px] gap-6">
+        <div className="space-y-4">
+          {comentario && (
+            <Callout tone="warn" icon={<MessageSquare className="size-5" />} title={comentario.autor}>
+              {comentario.texto}
+            </Callout>
+          )}
+          <SectionCard title="Lo que dice el BL">
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Descripción de la mercadería" value={ingreso.mercaderia ?? check.leido} />
+              <Field label="Señal detectada" value={check.nota ?? "—"} />
+            </div>
+          </SectionCard>
+          <SectionCard title="¿Es carga IMO?">
+            <div className="grid grid-cols-2 gap-4">
+              {opcion(false, "No es carga IMO", "La mercadería no está clasificada como peligrosa.", <PackageOpen className="size-4" />)}
+              {opcion(true, "Sí, es carga IMO", "Adjunto la cartilla de seguridad.", <FlaskConical className="size-4" />)}
+            </div>
+            {esImo && (
+              <div className="mt-4 space-y-3">
+                <div className={cn("flex items-center gap-4 rounded-xl border p-4", cartilla ? "border-emerald-200 bg-emerald-50/50" : "border-dashed border-stone-300")}>
+                  <div className="flex size-10 items-center justify-center rounded-lg bg-muted">
+                    {cartilla ? <FileText className="size-5 text-emerald-700" /> : <Upload className="size-5 text-muted-foreground" />}
+                  </div>
+                  <div className="flex-1 text-sm">
+                    <div className="font-semibold">Cartilla de seguridad IMO</div>
+                    <div className="text-xs text-muted-foreground">{cartilla ? `Cartilla_IMO_${ingreso.contenedores[0].numero}.pdf · cargada` : "Dangerous Goods Declaration, una por contenedor"}</div>
+                  </div>
+                  {!cartilla && (
+                    <Button variant="outline" size="sm" onClick={() => setCartilla(true)}>
+                      <Upload /> Subir archivo
+                    </Button>
+                  )}
+                </div>
+                <Callout tone="warn" icon={<ShieldAlert className="size-5" />} title={`La carga se deriva a ${DEPOSITO_IMO}`}>
+                  La playa 1704 no recibe contenedores IMO. Planir envía las cartillas a {DEPOSITO_IMO}, que evalúa si puede hacer el traslado y el almacenamiento.
+                </Callout>
+              </div>
+            )}
+          </SectionCard>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => go("C30", ingreso.id)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="brand"
+              size="lg"
+              disabled={esImo === null || (esImo && !cartilla)}
+              onClick={() => {
+                responder(ingreso.id, !!esImo)
+                toast.success("Respuesta enviada a Planir", { description: esImo ? `Planir derivará las cartillas a ${DEPOSITO_IMO}.` : `${ingreso.id} vuelve a revisión de Planir.` })
+                go("C30", ingreso.id)
+              }}
+            >
+              Enviar respuesta
+            </Button>
+          </div>
+        </div>
         <div className="space-y-3">
-          <SectionCard title="Así funciona">
-            <ol className="space-y-2 text-sm text-muted-foreground">
-              <li>1. Corregís el dato o subís el documento nuevo.</li>
-              <li>2. El portal vuelve a comparar todo automáticamente.</li>
-              <li>3. Si coincide, la solicitud pasa a revisión de Planir.</li>
-            </ol>
+          <SectionCard title="¿Por qué se consulta?">
+            <p className="text-sm text-muted-foreground">
+              El portal revisa el BL en busca de N° UN, clase IMO o descripciones como aerosoles, solventes o baterías de litio. Son señales de alerta, no una
+              clasificación: por eso Planir consulta antes de continuar.
+            </p>
           </SectionCard>
           <HelpLine className="px-1" />
         </div>

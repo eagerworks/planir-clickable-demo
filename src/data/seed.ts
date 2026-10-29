@@ -9,30 +9,58 @@ export const PESO_MAXIMO = 32500
 export const MAIL_PLAYA = "playa@planir.uy"
 export const TEL_PLAYA = "+598 2915 4400"
 
-export const TERMINALES = ["TCP · Terminal Cuenca del Plata", "Montecon", "Otra terminal"]
+export const TERMINALES = ["TCP · Terminal Cuenca del Plata", "Montecon"]
 export const TIPOS_CONTENEDOR = ["20' DV", "40' DV", "40' HC", "40' RH (reefer)"]
 
-export const PASOS_INTERNOS = [
-  "Mensaje simplificado en ImporSys",
-  "Orden de trabajo (OT) generada",
-  "OT timbrada por Aduana",
-  "Transporte coordinado",
+/** Montecon: BL + Delivery Order por contenedor. TCP: BL + confirmación de pago del cliente (suele llegar en el cuerpo del mail). */
+export const esTCP = (terminal: string) => terminal.startsWith("TCP")
+export const terminalCorta = (terminal: string) => terminal.split(" · ")[0]
+
+export const PLAYA = "Playa 1704"
+/** La playa 1704 no recibe contenedores IMO, sea cual sea su clase. */
+export const DEPOSITO_IMO = "Depósito 24"
+
+/** Señales en la descripción del BL que hacen sospechar carga IMO aunque no figure N° UN ni clase. */
+export const SENALES_IMO = [
+  "Explosivos y pirotecnia",
+  "Aerosoles y gases comprimidos",
+  "Solventes y líquidos inflamables",
+  "Sólidos inflamables o reactivos",
+  "Comburentes y peróxidos orgánicos",
+  "Tóxicos e infecciosos",
+  "Radiactivos",
+  "Ácidos y corrosivos",
+  "Baterías de litio",
 ]
+
+export const CHECK_IMO = "Mercadería peligrosa (IMO)"
+
+export const consultaImo = (descripcion: string) =>
+  `El BL describe la mercadería como ${descripcion}. ¿Puede confirmar si es carga IMO? Si lo es, adjunte la cartilla de seguridad: la playa 1704 no recibe carga IMO y la derivamos a ${DEPOSITO_IMO} para su evaluación.`
+
+const PASOS_BASE = ["Mensaje simplificado en ImporSys", "Orden de trabajo (OT) generada", "OT timbrada por Aduana", "Transporte coordinado"]
+export const pasosInternos = (terminal: string) => [...(esTCP(terminal) ? ["Pago verificado en el sistema de TCP"] : []), ...PASOS_BASE]
 
 export const CLIENTE_DEMO = "c-rambla"
 export const USUARIO_DEMO = "Lucía Méndez"
-export const OPERADORA = "Sofía Pereira"
+export const OPERADORA = "Gimena Belgara"
 export const ADMINISTRACION = "Martín Ruiz"
 
 export const daysBetween = (from: string, to: string) =>
   Math.max(0, Math.round((new Date(to.slice(0, 10)).getTime() - new Date(from.slice(0, 10)).getTime()) / 86400000))
 
+export const itemTraslado = (n: number, imo: boolean) => ({
+  concepto: `Traslado terminal → ${imo ? DEPOSITO_IMO : "playa"} (${n} × USD ${TARIFA_TRASLADO})`,
+  monto: n * TARIFA_TRASLADO,
+})
+export const itemImo = (n: number) => ({ concepto: `Carga IMO en ${DEPOSITO_IMO} (${n} × USD ${TARIFA_IMO})`, monto: n * TARIFA_IMO })
+
 export function proformaIngreso(cantidad: number, desde: string, hasta: string, imo: boolean) {
   const dias = daysBetween(desde, hasta)
   return [
-    { concepto: `Traslado terminal → playa (${cantidad} × USD ${TARIFA_TRASLADO})`, monto: cantidad * TARIFA_TRASLADO },
+    itemTraslado(cantidad, imo),
     { concepto: `Estadía estimada (${dias} días × ${cantidad} cont. × USD ${TARIFA_ESTADIA_DIA})`, monto: dias * cantidad * TARIFA_ESTADIA_DIA },
-    ...(imo ? [{ concepto: `Manipuleo carga IMO (${cantidad} × USD ${TARIFA_IMO})`, monto: cantidad * TARIFA_IMO }] : []),
+    ...(imo ? [itemImo(cantidad)] : []),
   ]
 }
 
@@ -45,17 +73,25 @@ const ctr = (numero: string, tipo: string, precinto: string, peso: number, salid
   ...extra,
 })
 
+const dmy = (iso: string) => iso.split("-").reverse().join("/")
+
 /** Chequeos estándar con todo coincidiendo. */
-export function checksOk(i: Pick<Ingreso, "barco" | "viaje" | "bl" | "terminal" | "fechaLlegada" | "contenedores" | "imo">): Check[] {
-  const fecha = i.fechaLlegada.split("-").reverse().join("/")
+export function checksOk(
+  i: Pick<Ingreso, "barco" | "viaje" | "bl" | "terminal" | "fechaLlegada" | "fechaMovimiento" | "contenedores" | "imo" | "imoDetalle">,
+): Check[] {
+  const tcp = esTCP(i.terminal)
+  const terminal = terminalCorta(i.terminal)
   return [
     { dato: "Barco y viaje", declarado: `${i.barco} · ${i.viaje}`, leido: `${i.barco} · ${i.viaje}`, documento: "BL", resultado: "ok" },
     { dato: "N° de BL", declarado: i.bl, leido: i.bl, documento: "BL", resultado: "ok" },
-    { dato: "Fecha estimada de llegada", declarado: fecha, leido: fecha, documento: "BL", resultado: "ok" },
-    { dato: "Terminal de origen", declarado: i.terminal.split(" · ")[0], leido: i.terminal.split(" · ")[0], documento: "Delivery Order", resultado: "ok" },
+    { dato: "Fecha estimada de llegada", declarado: dmy(i.fechaLlegada), leido: dmy(i.fechaLlegada), documento: "BL", resultado: "ok" },
+    { dato: "Terminal de origen", declarado: terminal, leido: terminal, documento: tcp ? "Confirmación de pago" : "Delivery Order", resultado: "ok" },
+    tcp
+      ? { dato: "Pago a TCP", declarado: "Informado por el cliente", leido: "Confirmación de pago adjunta", documento: "Confirmación de pago", resultado: "ok", nota: "Planir verifica que figure en TCP" }
+      : { dato: "Retiro autorizado (DO)", declarado: `Movimiento ${dmy(i.fechaMovimiento)}`, leido: `Retirable desde ${dmy(i.fechaLlegada)}`, documento: "Delivery Order", resultado: "ok" },
     { dato: "Cantidad de contenedores", declarado: String(i.contenedores.length), leido: String(i.contenedores.length), documento: "BL", resultado: "ok" },
     ...i.contenedores.flatMap((c): Check[] => [
-      { dato: `Contenedor ${c.numero}`, declarado: c.numero, leido: c.numero, documento: "BL · Delivery Order", resultado: "ok" },
+      { dato: `Contenedor ${c.numero}`, declarado: c.numero, leido: c.numero, documento: tcp ? "BL" : "BL · Delivery Order", resultado: "ok" },
       { dato: `Precinto ${c.numero}`, declarado: c.precinto, leido: c.precinto, documento: "BL", resultado: "ok" },
       {
         dato: `Peso bruto ${c.numero}`,
@@ -67,12 +103,12 @@ export function checksOk(i: Pick<Ingreso, "barco" | "viaje" | "bl" | "terminal" 
       },
     ]),
     i.imo
-      ? { dato: "Carga IMO", declarado: "Sí", leido: "Cartilla de seguridad presente", documento: "Cartilla IMO", resultado: "ok" }
-      : { dato: "Carga IMO", declarado: "No", leido: "Sin requisitos extra", documento: "—", resultado: "ok" },
+      ? { dato: "Mercadería peligrosa (IMO)", declarado: "Sí", leido: i.imoDetalle ?? "Clase IMO según la cartilla", documento: "BL · Cartilla IMO", resultado: "ok" }
+      : { dato: "Mercadería peligrosa (IMO)", declarado: "No", leido: "Sin N° UN, clase IMO ni descripciones de riesgo", documento: "BL", resultado: "ok" },
   ]
 }
 
-const pasos = (done: boolean) => PASOS_INTERNOS.map((label) => ({ label, done }))
+const pasos = (terminal: string, done: boolean) => pasosInternos(terminal).map((label) => ({ label, done }))
 
 type IngresoBase = Omit<Ingreso, "validacion" | "pasos" | "comentarios" | "historial" | "proforma"> &
   Partial<Pick<Ingreso, "validacion" | "pasos" | "comentarios" | "historial" | "proforma">>
@@ -81,7 +117,7 @@ function ingreso(i: IngresoBase): Ingreso {
   const salida = i.contenedores[0]?.salidasEstimadas[0]?.fecha ?? i.fechaMovimiento
   return {
     validacion: checksOk(i),
-    pasos: pasos(["aprobada", "ingresada", "cerrada"].includes(i.estado)),
+    pasos: pasos(i.terminal, ["aprobada", "ingresada", "cerrada"].includes(i.estado)),
     comentarios: [],
     historial: [
       { fecha: `${i.creado}T09:10`, actor: "cliente", texto: `Solicitud presentada por ${i.creadoPor}` },
@@ -164,8 +200,21 @@ const ing139Base = {
   bl: "MEDUYA175110",
   terminal: "TCP · Terminal Cuenca del Plata",
   fechaLlegada: "2026-11-03",
+  fechaMovimiento: "2026-11-04",
   imo: false,
   contenedores: [ctr("MSCU4471023", "20' DV", "FJ27701188", 18240, "2026-11-20")],
+}
+
+const ing138Base = {
+  barco: "MSC BIANCA",
+  viaje: "NX644A",
+  bl: "MEDUYA176455",
+  terminal: "TCP · Terminal Cuenca del Plata",
+  fechaLlegada: "2026-11-01",
+  fechaMovimiento: "2026-11-03",
+  imo: false,
+  mercaderia: "1.180 CAJAS · SPRAY PAINT AEROSOL CANS 400 ML",
+  contenedores: [ctr("MSMU5590127", "20' DV", "FJ27713380", 14820, "2026-11-17")],
 }
 
 export const seedIngresos: Ingreso[] = [
@@ -175,10 +224,9 @@ export const seedIngresos: Ingreso[] = [
     clienteId: "c-rambla",
     creadoPor: "Diego Suárez",
     ...ing139Base,
-    fechaMovimiento: "2026-11-04",
     documentos: [
       { tipo: "BL", nombre: "BL_MEDUYA175110.pdf", estado: "observado" },
-      { tipo: "DO", nombre: "DO_TCP_1601127.pdf", estado: "validado", contenedor: "MSCU4471023" },
+      { tipo: "PAGO", nombre: "Pago_TCP_1601127.pdf", estado: "validado" },
     ],
     validacion: checksOk(ing139Base).map((c) =>
       c.dato === "Fecha estimada de llegada"
@@ -210,7 +258,7 @@ export const seedIngresos: Ingreso[] = [
     contenedores: [ctr("MRKU5523190", "40' HC", "ML4410287", 60000, "2026-11-14")],
     documentos: [
       { tipo: "BL", nombre: "BL_MAEU251190876.pdf", estado: "en_revision" },
-      { tipo: "DO", nombre: "DO_TCP_1600982.pdf", estado: "validado", contenedor: "MRKU5523190" },
+      { tipo: "PAGO", nombre: "Pago_TCP_1600982.pdf", estado: "validado" },
     ],
     historial: [
       { fecha: "2026-10-25T11:20", actor: "cliente", texto: "Solicitud presentada por Diego Suárez" },
@@ -243,7 +291,7 @@ export const seedIngresos: Ingreso[] = [
     historial: [
       { fecha: "2026-10-24T10:05", actor: "cliente", texto: "Solicitud presentada por Diego Suárez" },
       { fecha: "2026-10-24T10:06", actor: "sistema", texto: "Documentos validados automáticamente" },
-      { fecha: "2026-10-27T16:40", actor: "planir", texto: "Aprobada por Sofía Pereira" },
+      { fecha: "2026-10-27T16:40", actor: "planir", texto: `Aprobada por ${OPERADORA}` },
     ],
     estado: "aprobada",
     creado: "2026-10-24",
@@ -283,7 +331,7 @@ export const seedIngresos: Ingreso[] = [
     contenedores: [ctr("MSDU2209174", "20' DV", "FJ27511902", 16420, "2026-11-03", { ingresoReal: "2026-10-17T10:30" })],
     documentos: [
       { tipo: "BL", nombre: "BL_MEDUYA168877.pdf", estado: "validado" },
-      { tipo: "DO", nombre: "DO_TCP_1598840.pdf", estado: "validado", contenedor: "MSDU2209174" },
+      { tipo: "PAGO", nombre: "Pago_TCP_1598840.pdf", estado: "validado" },
     ],
     estado: "ingresada",
     creado: "2026-10-13",
@@ -306,12 +354,34 @@ export const seedIngresos: Ingreso[] = [
     ],
     documentos: [
       { tipo: "BL", nombre: "BL_MEDUYA161204.pdf", estado: "validado" },
-      { tipo: "DO", nombre: "DO_TCP_1597112.pdf", estado: "validado", contenedor: "MSMU7710023" },
-      { tipo: "DO", nombre: "DO_TCP_1597113.pdf", estado: "validado", contenedor: "MSMU7712261" },
+      { tipo: "PAGO", nombre: "Pago_TCP_1597112.pdf", estado: "validado" },
     ],
     estado: "cerrada",
     creado: "2026-09-30",
     actualizado: "2026-10-20",
+  }),
+
+  ingreso({
+    id: "ING-0138",
+    clienteId: "c-rambla",
+    creadoPor: "Diego Suárez",
+    ...ing138Base,
+    documentos: [
+      { tipo: "BL", nombre: "BL_MEDUYA176455.pdf", estado: "en_revision" },
+      { tipo: "PAGO", nombre: "Pago_TCP_1601388.pdf", estado: "validado" },
+    ],
+    validacion: checksOk(ing138Base).map((c) =>
+      c.dato === "Mercadería peligrosa (IMO)"
+        ? { ...c, leido: "«SPRAY PAINT AEROSOL CANS»", resultado: "warning" as const, nota: "Señal de alerta: aerosoles. El BL no indica N° UN ni clase IMO" }
+        : c,
+    ),
+    historial: [
+      { fecha: "2026-10-27T16:20", actor: "cliente", texto: "Solicitud presentada por Diego Suárez" },
+      { fecha: "2026-10-27T16:21", actor: "sistema", texto: "En revisión de Planir: posible carga IMO no declarada" },
+    ],
+    estado: "revision",
+    creado: "2026-10-27",
+    actualizado: "2026-10-27",
   }),
 
   // ---- Frío Austral (cuenta corriente) ----
@@ -333,13 +403,44 @@ export const seedIngresos: Ingreso[] = [
     ],
     documentos: [
       { tipo: "BL", nombre: "BL_MEDUYA176032.pdf", estado: "validado" },
-      { tipo: "DO", nombre: "DO_TCP_1601302.pdf", estado: "validado", contenedor: "MEDU9134520" },
-      { tipo: "DO", nombre: "DO_TCP_1601303.pdf", estado: "validado", contenedor: "MEDU9134811" },
-      { tipo: "DO", nombre: "DO_TCP_1601304.pdf", estado: "validado", contenedor: "MEDU9135022" },
+      { tipo: "PAGO", nombre: "Pago_TCP_1601302.pdf", estado: "validado" },
     ],
     estado: "pendiente_aprobacion",
     creado: "2026-10-27",
     actualizado: "2026-10-27",
+  }),
+  ingreso({
+    id: "ING-0130",
+    clienteId: "c-frio",
+    creadoPor: "Martín Ferreira",
+    barco: "CAP SAN MARCO",
+    viaje: "642S",
+    bl: "SUDU26A0R4102",
+    terminal: "TCP · Terminal Cuenca del Plata",
+    fechaLlegada: "2026-10-27",
+    fechaMovimiento: "2026-10-28",
+    imo: false,
+    contenedores: [ctr("SUDU6630418", "40' RH (reefer)", "HS0041388", 26540, "2026-11-08")],
+    documentos: [
+      { tipo: "BL", nombre: "BL_SUDU26A0R4102.pdf", estado: "validado" },
+      { tipo: "PAGO", nombre: "Mail_pago_TCP_27-10.pdf", estado: "validado" },
+    ],
+    comentarios: [
+      {
+        fecha: "2026-10-28T09:20",
+        autor: `${OPERADORA} · Planir`,
+        texto: "El pago todavía no figura registrado en TCP, por lo que la terminal no libera el contenedor. Lo retiramos apenas se acredite; le avisaremos por este medio.",
+      },
+    ],
+    historial: [
+      { fecha: "2026-10-26T14:05", actor: "cliente", texto: "Solicitud presentada por Martín Ferreira" },
+      { fecha: "2026-10-26T14:06", actor: "sistema", texto: "Documentos validados automáticamente" },
+      { fecha: "2026-10-28T09:20", actor: "planir", texto: "Pendiente por causa externa: Pago no registrado en TCP" },
+    ],
+    motivoPendiente: "Pago no registrado en TCP",
+    estado: "pendiente_externo",
+    creado: "2026-10-26",
+    actualizado: "2026-10-28",
   }),
   ingreso({
     id: "ING-0126",
@@ -358,8 +459,7 @@ export const seedIngresos: Ingreso[] = [
     ],
     documentos: [
       { tipo: "BL", nombre: "BL_SUDU26A0R4471.pdf", estado: "validado" },
-      { tipo: "DO", nombre: "DO_TCP_1599050.pdf", estado: "validado", contenedor: "SUDU8812239" },
-      { tipo: "DO", nombre: "DO_TCP_1599051.pdf", estado: "validado", contenedor: "SUDU8814410" },
+      { tipo: "PAGO", nombre: "Pago_TCP_1599050.pdf", estado: "validado" },
     ],
     estado: "ingresada",
     creado: "2026-10-16",
@@ -395,15 +495,45 @@ export const seedIngresos: Ingreso[] = [
     fechaLlegada: "2026-10-13",
     fechaMovimiento: "2026-10-14",
     imo: true,
+    imoDetalle: "UN 1263 · Clase 3 · Pintura (líquido inflamable)",
+    mercaderia: "PAINT, FLAMMABLE LIQUID · 18 PALLETS",
+    evaluacionD24: "aceptada",
     contenedores: [ctr("TCNU7738102", "40' HC", "LAB135380", 5245.8, "2026-10-30", { ingresoReal: "2026-10-14T13:20", salidaId: "SAL-0056" })],
     documentos: [
       { tipo: "BL", nombre: "BL_HLCUVER2409118.pdf", estado: "validado" },
-      { tipo: "DO", nombre: "DO_TCP_1598611.pdf", estado: "validado", contenedor: "TCNU7738102" },
+      { tipo: "PAGO", nombre: "Pago_TCP_1598611.pdf", estado: "validado" },
       { tipo: "IMO", nombre: "Cartilla_IMO_MAIPO_V2411S.pdf", estado: "validado" },
     ],
     estado: "ingresada",
     creado: "2026-10-10",
     actualizado: "2026-10-14",
+  }),
+  ingreso({
+    id: "ING-0134",
+    clienteId: "c-agro",
+    creadoPor: "Valeria Rodríguez",
+    barco: "SANTOS EXPRESS",
+    viaje: "2443S",
+    bl: "HLCUSSZ2410077",
+    terminal: "Montecon",
+    fechaLlegada: "2026-11-02",
+    fechaMovimiento: "2026-11-04",
+    imo: true,
+    imoDetalle: "UN 2902 · Clase 6.1 · Plaguicida líquido, tóxico",
+    mercaderia: "PESTICIDE, LIQUID, TOXIC, N.O.S. · 80 TAMBORES",
+    contenedores: [ctr("HLBU1192835", "20' DV", "HL4471902", 12350, "2026-11-20")],
+    documentos: [
+      { tipo: "BL", nombre: "BL_HLCUSSZ2410077.pdf", estado: "validado" },
+      { tipo: "DO", nombre: "DO_Montecon_1594815.pdf", estado: "validado", contenedor: "HLBU1192835" },
+      { tipo: "IMO", nombre: "Cartilla_IMO_HLBU1192835.pdf", estado: "validado" },
+    ],
+    historial: [
+      { fecha: "2026-10-27T11:30", actor: "cliente", texto: "Solicitud presentada por Valeria Rodríguez · carga IMO" },
+      { fecha: "2026-10-27T11:31", actor: "sistema", texto: "Documentos validados automáticamente" },
+    ],
+    estado: "pendiente_aprobacion",
+    creado: "2026-10-27",
+    actualizado: "2026-10-27",
   }),
   ingreso({
     id: "ING-0105",
@@ -416,6 +546,8 @@ export const seedIngresos: Ingreso[] = [
     fechaLlegada: "2026-09-24",
     fechaMovimiento: "2026-09-25",
     imo: true,
+    imoDetalle: "UN 1263 · Clase 3 · Pintura (líquido inflamable)",
+    evaluacionD24: "aceptada",
     contenedores: [ctr("TCNU7731550", "40' HC", "LAB131022", 6120, "2026-10-09", { ingresoReal: "2026-09-25T12:00", salidaReal: "2026-10-10T10:45", salidaId: "SAL-0044" })],
     documentos: [{ tipo: "BL", nombre: "BL_HLCUVER2408802.pdf", estado: "validado" }],
     estado: "cerrada",
@@ -438,7 +570,7 @@ export const seedIngresos: Ingreso[] = [
     contenedores: [ctr("MSCU6620158", "20' DV", "FJ27499310", 17650, "2026-11-05")],
     documentos: [
       { tipo: "BL", nombre: "BL_MEDUYA166610.pdf", estado: "observado" },
-      { tipo: "DO", nombre: "DO_TCP_1598702.pdf", estado: "validado", contenedor: "MSCU6620158" },
+      { tipo: "PAGO", nombre: "Pago_TCP_1598702.pdf", estado: "validado" },
     ],
     validacion: checksOk({
       barco: "MSC ANTONELLA",
@@ -446,6 +578,7 @@ export const seedIngresos: Ingreso[] = [
       bl: "MEDUYA166610",
       terminal: "TCP · Terminal Cuenca del Plata",
       fechaLlegada: "2026-10-20",
+      fechaMovimiento: "2026-10-21",
       imo: false,
       contenedores: [ctr("MSCU6620158", "20' DV", "FJ27499310", 17650, "2026-11-05")],
     }).map((c) =>
@@ -503,7 +636,7 @@ export const seedIngresos: Ingreso[] = [
     contenedores: [ctr("MEDU3318204", "20' DV", "FJ27712240", 15400, "2026-11-09")],
     documentos: [
       { tipo: "BL", nombre: "BL_MEDUYA176118.pdf", estado: "validado" },
-      { tipo: "DO", nombre: "DO_TCP_1601340.pdf", estado: "validado", contenedor: "MEDU3318204" },
+      { tipo: "PAGO", nombre: "Pago_TCP_1601340.pdf", estado: "validado" },
     ],
     estado: "pendiente_aprobacion",
     creado: "2026-10-27",
@@ -520,9 +653,9 @@ export const seedSalidas: Salida[] = [
     fechaRetiro: "2026-10-30",
     estado: "pendiente_pago",
     proforma: [
-      { concepto: "Traslado terminal → playa (1 × USD 180)", monto: 180 },
+      { concepto: "Traslado terminal → Depósito 24 (1 × USD 180)", monto: 180 },
       { concepto: "Estadía (16 días × 1 cont. × USD 12)", monto: 192 },
-      { concepto: "Manipuleo carga IMO (1 × USD 90)", monto: 90 },
+      { concepto: "Carga IMO en Depósito 24 (1 × USD 90)", monto: 90 },
     ],
     comprobante: "Transferencia_BROU_28-10.pdf",
     solicitada: "2026-10-27",
@@ -579,9 +712,9 @@ export const seedSalidas: Salida[] = [
     fechaRetiro: "2026-10-10",
     estado: "retirada",
     proforma: [
-      { concepto: "Traslado terminal → playa (1 × USD 180)", monto: 180 },
+      { concepto: "Traslado terminal → Depósito 24 (1 × USD 180)", monto: 180 },
       { concepto: "Estadía (15 días × 1 cont. × USD 12)", monto: 180 },
-      { concepto: "Manipuleo carga IMO (1 × USD 90)", monto: 90 },
+      { concepto: "Carga IMO en Depósito 24 (1 × USD 90)", monto: 90 },
     ],
     solicitada: "2026-10-08",
     pagoConfirmado: "2026-10-09",
@@ -590,12 +723,15 @@ export const seedSalidas: Salida[] = [
 ]
 
 export const seedNotificaciones: Notificacion[] = [
-  { id: "n1", para: "cliente", fecha: "2026-10-27T16:40", texto: "ING-0136 fue aprobada. Ya podés ver la proforma.", ref: "ING-0136", leida: false, tono: "ok" },
-  { id: "n2", para: "cliente", fecha: "2026-10-26T15:03", texto: "ING-0139 tiene 2 datos que no coinciden con el BL. Revisalos y reenviá.", ref: "ING-0139", leida: false, tono: "error" },
+  { id: "n1", para: "cliente", fecha: "2026-10-27T16:40", texto: "ING-0136 fue aprobada. Ya puede ver la proforma.", ref: "ING-0136", leida: false, tono: "ok" },
+  { id: "n2", para: "cliente", fecha: "2026-10-26T15:03", texto: "ING-0139 tiene 2 datos que no coinciden con el BL. Revíselos y vuelva a enviarla.", ref: "ING-0139", leida: false, tono: "error" },
   { id: "n3", para: "cliente", fecha: "2026-10-25T11:21", texto: "ING-0137 quedó en revisión de Planir: peso fuera de rango.", ref: "ING-0137", leida: false, tono: "warn" },
+  { id: "n5", para: "cliente", fecha: "2026-10-27T16:21", texto: "ING-0138 quedó en revisión de Planir: el BL menciona aerosoles.", ref: "ING-0138", leida: true, tono: "warn" },
   { id: "n4", para: "cliente", fecha: "2026-10-17T10:30", texto: "El contenedor MSDU2209174 (ING-0124) ingresó a la playa.", ref: "ING-0124", leida: true, tono: "info" },
   { id: "p1", para: "planir", fecha: "2026-10-27T18:05", texto: "Frío Austral pidió ayuda en ING-0140.", ref: "ING-0140", leida: false, tono: "warn" },
   { id: "p2", para: "planir", fecha: "2026-10-27T14:22", texto: "Nueva solicitud ING-0141 de Logística Punta Carretas lista para revisar.", ref: "ING-0141", leida: false, tono: "info" },
+  { id: "p4", para: "planir", fecha: "2026-10-27T16:21", texto: "Posible carga IMO no declarada en ING-0138 (aerosoles en el BL).", ref: "ING-0138", leida: false, tono: "warn" },
+  { id: "p5", para: "planir", fecha: "2026-10-27T11:31", texto: "ING-0134 de Agroquímica del Litoral es carga IMO: hay que derivar las cartillas a Depósito 24.", ref: "ING-0134", leida: false, tono: "warn" },
   { id: "p3", para: "planir", fecha: "2026-10-28T08:50", texto: "Agroquímica del Litoral adjuntó el comprobante de SAL-0056.", ref: "SAL-0056", leida: false, tono: "info" },
 ]
 
@@ -617,7 +753,7 @@ export const draftInicial = {
   barco: "HUAN BAO 68",
   viaje: "260710",
   bl: "MEDUYA172632",
-  terminal: "TCP · Terminal Cuenca del Plata",
+  terminal: "Montecon",
   fechaLlegada: "2026-10-30",
   fechaMovimiento: "2026-10-31",
   fechaSalida: "2026-11-05",
@@ -626,7 +762,7 @@ export const draftInicial = {
     { numero: "MSNU8293351", tipo: "40' HC", precinto: "FJ27657254", peso: 5631.9 },
     { numero: "MSNU8299238", tipo: "40' HC", precinto: "FJ27657255", peso: 5613.4 },
   ],
-  // claves: "BL", "IMO", "DO:<contenedor>"
+  // claves: "BL", "PAGO" (TCP), "DO:<contenedor>" (Montecon), "IMO"
   documentos: {} as Record<string, string>,
 }
 
