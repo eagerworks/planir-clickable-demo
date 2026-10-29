@@ -1,6 +1,6 @@
 # Planir · Prototipo del portal de playa de contenedores
 
-Prototipo navegable (sin backend) para mostrarle a Planir cómo se verían el portal de clientes y la consola interna. Requerimientos en [`../docs/requerimientos-prototipo.md`](../docs/requerimientos-prototipo.md).
+Prototipo navegable (sin backend) para mostrarle a Planir cómo se verían el portal de clientes y la consola interna. Requerimientos en [`/docs/requerimientos-prototipo.md`](/docs/requerimientos-prototipo.md).
 
 ## Correr
 
