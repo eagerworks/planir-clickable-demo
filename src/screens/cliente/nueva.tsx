@@ -480,7 +480,7 @@ export function C12Documentos() {
             </Callout>
           </div>
         )}
-        <p className="mt-4 text-xs text-muted-foreground">Se aceptan PDF o fotos legibles. Si un documento no se puede leer, una persona de Planir lo revisa.</p>
+        <p className="mt-4 text-xs text-muted-foreground">Se aceptan PDF o fotos legibles. Si un documento no se puede leer, una persona de Planir lo revisará.</p>
       </SectionCard>
     </WizardShell>
   )
@@ -611,7 +611,7 @@ export function C15Enviada() {
         </div>
         <h1 className="mt-5 text-2xl font-bold text-planir">Solicitud {STORY_ING} enviada</h1>
         <p className="mt-2 text-muted-foreground">
-          Validamos sus documentos y <b className="text-foreground">los {solicitud?.validacion.length ?? 0} datos coinciden</b>. Ahora la revisa el equipo de Planir.
+          Validamos sus documentos y <b className="text-foreground">los {solicitud?.validacion.length ?? 0} datos coinciden</b>. El equipo de Planir revisará la solicitud.
         </p>
       </div>
       <SectionCard className="mx-auto max-w-2xl" title="¿Qué sigue?">

@@ -166,7 +166,7 @@ export function A02NuevoCliente() {
           <SectionCard title="Condiciones comerciales">
             <div className="grid grid-cols-2 gap-3">
               {opcion("cuenta_corriente", "Cuenta corriente", "Retira sin pago previo; se factura al final.")}
-              {opcion("pago_previo", "Pago previo", "Paga la proforma antes de retirar, como un peaje.")}
+              {opcion("pago_previo", "Pago previo", "Paga la proforma antes de retirar.")}
             </div>
             <label className="mt-4 flex items-center justify-between rounded-lg border p-3">
               <span>

@@ -177,7 +177,7 @@ export function ClienteSalidaDetalle({ id }: { id: string }) {
         <SalidaTracker salida={salida} pagoPrevio={pagoPrevio} />
         {salida.estado === "pendiente_pago" && (
           <Callout tone="warn" icon={<Clock className="size-5" />} title="Pendiente de pago">
-            El retiro se habilita cuando Planir confirme la transferencia. Funciona como un peaje: se paga antes de salir y la factura llega al terminar.
+            El retiro se habilita cuando Planir confirme la transferencia.
           </Callout>
         )}
         {salida.estado === "habilitada" && (

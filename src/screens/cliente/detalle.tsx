@@ -131,7 +131,6 @@ function EstadoCallout({ ingreso }: { ingreso: Ingreso }) {
       return (
         <Callout tone="warn" icon={<PauseCircle className="size-5" />} title={`Pendiente por causa externa · ${ingreso.motivoPendiente}`}>
           {ultimoComentario ? `“${ultimoComentario.texto}” — ${ultimoComentario.autor}` : "Planir le avisará cuando se pueda retomar."}
-          <div className="mt-1 text-xs">No es un problema de su solicitud: en cuanto se resuelva, sigue su curso.</div>
         </Callout>
       )
     case "aprobada":

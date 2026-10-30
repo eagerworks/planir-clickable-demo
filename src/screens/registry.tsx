@@ -528,7 +528,7 @@ export const SCREENS: ScreenDef[] = [
     group: G7,
     view: "cliente",
     url: (f) => `portal.planir.uy/salidas/${f}`,
-    context: "Como un peaje: el cliente ve el importe, los datos para transferir y puede adjuntar el comprobante. Sin pasarela de pago.",
+    context: "El cliente ve el importe, los datos para transferir y puede adjuntar el comprobante. Sin pasarela de pago.",
     tag: "A VALIDAR",
     focus: STORY_SAL,
     prepare: story(5),
